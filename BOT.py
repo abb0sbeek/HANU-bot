@@ -1,20 +1,24 @@
 import asyncio
+import os
 from datetime import datetime
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
+# 1. @BotFather bergan tokenni qo'ying:
 BOT_TOKEN = "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE"
+
+# 2. Netlify havolangizni qo'ying:
 WEB_APP_URL = "https://chipper-banoffee-145251.netlify.app/"
+
+# 3. O'zingizning Telegram username'ingizni qo'ying:
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-
-# Foydalanuvchilarning birinchi kirgan sanasini eslab qolish uchun oddiy xotira
 user_joined_dates = {}
 
-# Asosiy menyu tugmalari
 def get_main_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -34,7 +38,6 @@ def get_main_keyboard():
         ]
     )
 
-# /start bosilganda
 @dp.message(CommandStart())
 async def start_cmd(message: types.Message):
     user_id = message.from_user.id
@@ -49,7 +52,6 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(xabar, reply_markup=get_main_keyboard(), parse_mode="HTML")
 
-# "Mening profilim" tugmasi bosilganda
 @dp.callback_query(F.data == "my_profile")
 async def profile_handler(callback: types.CallbackQuery):
     user = callback.from_user
@@ -77,7 +79,6 @@ async def profile_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(profil_matni, reply_markup=profil_tugmalari, parse_mode="HTML")
     await callback.answer()
 
-# "Qo'llanma" tugmasi bosilganda
 @dp.callback_query(F.data == "guide")
 async def guide_handler(callback: types.CallbackQuery):
     matn = (
@@ -91,7 +92,6 @@ async def guide_handler(callback: types.CallbackQuery):
         "⚡ <b>Qoida:</b> Har bir bosqichda kamida <b>80%</b> to'plaganingizda keyingi bosqich ochiladi.\n"
         "🔥 Har kuni dars qilib, o'z <b>Streak</b> (ketma-ket kunlar)ingizni saqlang!"
     )
-    
     orqaga_tugma = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🚀 Darsni boshlash", web_app=WebAppInfo(url=WEB_APP_URL))],
@@ -101,7 +101,6 @@ async def guide_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(matn, reply_markup=orqaga_tugma, parse_mode="HTML")
     await callback.answer()
 
-# "Asosiy menyu" tugmasi bosilganda
 @dp.callback_query(F.data == "back_to_menu")
 async def back_to_menu_handler(callback: types.CallbackQuery):
     ism = callback.from_user.first_name or "Do'stim"
@@ -113,7 +112,18 @@ async def back_to_menu_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(xabar, reply_markup=get_main_keyboard(), parse_mode="HTML")
     await callback.answer()
 
+# Render serveri uchun 24/7 uyg'oq tutuvchi qism:
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", lambda r: web.Response(text="HANU Bot 24/7 ishlamoqda! 🇰🇷"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
 async def main():
+    await start_web_server()
     print("Bot muvaffaqiyatli ishga tushdi...")
     await dp.start_polling(bot)
 

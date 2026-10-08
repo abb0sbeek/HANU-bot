@@ -24,100 +24,103 @@ GEMINI_API_KEY = RAW_KEY.strip().strip('"').strip("'")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# --- ZAXIRA OFFLINE JAVOBLAR (Faqat aniq so'zlar uchun) ---
-FALLBACK_RESPONSES = {
-    "salom": "Assalomu alaykum! Koreys tili bo'yicha qanday savolingiz bor? Darslarni boshlash uchun pastdagi «🚀 Darsni boshlash» tugmasini bosing.",
+# --- TEZKOR ZAXIRA BAZASI (Darhol, 0 soniyada javob berish uchun) ---
+FAST_KNOWLEDGE_BASE = {
+    "olma": "🍎 **Olma** — **사과** [sa-gwa].\n*Misol:* 사과를 먹어요 (Olma yeyman).",
+    "suv": "💧 **Suv** — **물** [mul].\n*Misol:* 물을 마셔요 (Suv ichaman).",
+    "kitob": "📚 **Kitob** — **책** [chaek].\n*Misol:* 책을 읽어요 (Kitob o'qiyman).",
+    "maktab": "🏫 **Maktab** — **학교** [hak-kyo].\n*Misol:* 학교에 가요 (Maktabga boraman).",
+    "salomlashish": (
+        "🇰🇷 <b>Koreyscha salomlashish turlari:</b>\n\n"
+        "1. <b>안녕하세요 (Annyong-haseyo)</b> — Xushmuomala salomlashish (kattalar, notanishlar uchun).\n"
+        "2. <b>안녕하십니까 (Annyong-hashimnikka)</b> — Juda rasmiy (armiya, yangiliklar, biznes).\n"
+        "3. <b>안녕 (Annyong)</b> — Norasmiy, faqat yaqin do'stlar va tengdoshlar uchun."
+    ),
+    "salom": "Assalomu alaykum! Koreys tili bo'yicha savolingiz bormi? Darslarni boshlash uchun «🚀 Darsni boshlash» tugmasini bosing.",
     "qalesiz": "Rahmat, yaxshi! Koreys tilini o'rganishda qanday yordam bera olaman?",
     "안녕하세요": "안녕하세요! 반갑습니다! (Assalomu alaykum! Tanishganimdan xursandman!)",
     "rahmat": "Arzimaydi! Koreys tilida 'rahmat' — <b>감사합니다 (kamsahamnida)</b> yoki do'stlar orasida <b>고마워 (komawo)</b>.",
-    "o'rgat": "Koreys tilini 0 dan boshlash uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing!"
+    "qiynalyapman": (
+        "💡 <b>Koreyscha so'zlarni tez va oson yodlash uchun 4 ta oltin qoida:</b>\n\n"
+        "1️⃣ <b>Kuniga 15-20 tadan oshirmang:</b> Bir kunda 50 ta so'z yodlagandan ko'ra, har kuni 15 tadan sifatli yodlash 10 barobar foydaliroq.\n"
+        "2️⃣ <b>HANU 5 bosqichli tizimidan foydalaning:</b> Avval Flashcard'da ko'ring, keyin Testda toping, so'ng Yozishda mashq qiling va Audiosini tinglang.\n"
+        "3️⃣ <b>So'zni gap ichida bog'lang:</b> Masalan, shunchaki '사과' emas, '사과를 먹어요' deb yodlang.\n"
+        "4️⃣ <b>Ovoz chiqarib takrorlang:</b> O'z ovozingizni eshitsangiz, miya so'zni 2 barobar tez saqlab qoladi!"
+    ),
+    "yodlash": (
+        "💡 <b>Koreyscha so'zlarni tez va oson yodlash uchun 4 ta oltin qoida:</b>\n\n"
+        "1️⃣ <b>Kuniga 15-20 tadan oshirmang:</b> Bir kunda 50 ta so'z yodlagandan ko'ra, har kuni 15 tadan sifatli yodlash 10 barobar foydaliroq.\n"
+        "2️⃣ <b>HANU 5 bosqichli tizimidan foydalaning:</b> Flashcard ➔ Test ➔ Yozish ➔ Tarjima ➔ Tinglash.\n"
+        "3️⃣ <b>So'zni gap ichida bog'lang:</b> Masalan, '사과를 먹어요' (Olma yeyman).\n"
+        "4️⃣ <b>Ovoz chiqarib takrorlang:</b> Miya eshitgan so'zini ancha uzoq eslab qoladi!"
+    ),
+    "o'rgat": "Koreys tilini 0 dan mukammal o'rganish uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing!"
 }
 
-def get_fallback_answer(text: str) -> str:
-    t = text.lower().strip()
-    if t in FALLBACK_RESPONSES:
-        return FALLBACK_RESPONSES[t]
+def check_fast_knowledge(prompt: str) -> str:
+    p = prompt.lower().strip()
+    for k, v in FAST_KNOWLEDGE_BASE.items():
+        if k in p:
+            return v
     return ""
 
-# --- ISHLAYDIGAN KASKADLI GEMINI MODELLARI ---
-GEMINI_MODELS_CASCADE = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-flash",
-    "gemini-2.0-pro-exp-02-05",
-    "gemini-1.5-pro-latest",
-    "gemini-1.5-pro",
-    "gemini-pro"
-]
-
-LAST_WORKING_MODEL = None
-
+# --- GEMINI SUN'IY INTELLEKT (Tezkor va yengil 2 ta model) ---
 async def ask_gemini(prompt: str, is_simple: bool = False) -> str:
-    global LAST_WORKING_MODEL
-    if not GEMINI_API_KEY:
-        fb = get_fallback_answer(prompt)
-        return fb or "⚠️ Gemini API kaliti kiritilmagan."
+    # 1. Avval tezkor bazadan tekshirish (0 soniya)
+    fast_resp = check_fast_knowledge(prompt)
+    if fast_resp:
+        return fast_resp
 
-    # Qat'iy lo'nda va moslashuvchan yo'riqnoma:
+    if not GEMINI_API_KEY:
+        return "⚠️ Gemini API kaliti kiritilmagan. Render Environment'ga GEMINI_API_KEY qo'ying."
+
+    # Yo'riqnoma
     if is_simple:
         instruction = (
             "Siz 'HANU' koreys tili repetitorisiz. "
-            "Foydalanuvchi oddiy so'z yoki tarjima so'radi. "
             "QAT'IY TALAB: Javobingiz atigi 1-2 qatordan oshmasin! "
-            "Hech qanday kirish ('Salom...'), xulosa ('Fighting!'), yoki qiziqarli faktlar YOZMANG! "
+            "Kirish ('Salom!'), xulosa ('Fighting!') yoki qiziqarli faktlar YOZMANG! "
             "Format: So'z — **Koreyscha** [talaffuz]. Misol: koreyscha gap (o'zbekcha tarjima)."
         )
         max_tokens = 150
     else:
         instruction = (
             "Siz 'HANU' koreys tili repetitorisiz. "
-            "QAT'IY TALAB: Ortiqcha kirish va xulosa gaplarsiz, to'g'ridan-to'g'ri savolga javob bering. "
-            "Mavzuni cho'zmasdan, eng muhim 3-4 ta amaliy punktda ixcham va lo'nda tushuntiring."
+            "Ortiqcha kirish va xulosa gaplarsiz, to'g'ridan-to'g'ri savolga javob bering. "
+            "Eng muhim 3-4 ta amaliy punktda ixcham va lo'nda tushuntiring."
         )
         max_tokens = 350
 
-    parts = [{"text": f"Yo'riqnoma: {instruction}\n\nFoydalanuvchi savoli: {prompt}"}]
-
     payload = {
-        "contents": [{"parts": parts}],
+        "contents": [{
+            "parts": [{"text": f"Yo'riqnoma: {instruction}\n\nFoydalanuvchi savoli: {prompt}"}]
+        }],
         "generationConfig": {
             "temperature": 0.2,
             "maxOutputTokens": max_tokens
         }
     }
 
-    test_models = []
-    if LAST_WORKING_MODEL and LAST_WORKING_MODEL in GEMINI_MODELS_CASCADE:
-        test_models.append(LAST_WORKING_MODEL)
-    for m in GEMINI_MODELS_CASCADE:
-        if m not in test_models:
-            test_models.append(m)
+    # Faqat 2 ta eng ishonchli va tezkor modelni sinaymiz (kutib qolmaslik uchun)
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest"]
 
     async with aiohttp.ClientSession() as session:
-        for model in test_models:
-            for ver in ["v1beta", "v1"]:
-                url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={GEMINI_API_KEY}"
-                try:
-                    async with session.post(url, json=payload, timeout=10) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            candidates = data.get("candidates", [])
-                            if candidates:
-                                content = candidates[0].get("content", {})
-                                p_resp = content.get("parts", [])
-                                if p_resp:
-                                    LAST_WORKING_MODEL = model
-                                    return p_resp[0].get("text", "").strip()
-                except Exception:
-                    pass
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            try:
+                async with session.post(url, json=payload, timeout=6) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            content = candidates[0].get("content", {})
+                            parts = content.get("parts", [])
+                            if parts:
+                                return parts[0].get("text", "").strip()
+            except Exception as e:
+                print(f"{model} xato:", e)
 
-    fb = get_fallback_answer(prompt)
-    if fb:
-        return fb
-    return "Kechirasiz, sun'iy intellekt serverida vaqtincha uzilish bo'ldi. Birozdan so'ng qayta urinib ko'ring."
+    return "Koreys tili bo'yicha savolingiz qabul qilindi. Aniqroq so'rab ko'ring yoki pastdagi «🚀 Darsni boshlash» tugmasi orqali darslarga o'ting."
 
 async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
     prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.
@@ -285,7 +288,6 @@ async def ai_chat_handler(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
     user_prompt = message.text.strip()
     
-    # Savol qisqa yoki oddiy so'z ekanligini aniqlash:
     words = user_prompt.split()
     is_simple = len(words) <= 4 or "nima degani" in user_prompt.lower() or "tarjima" in user_prompt.lower()
     
@@ -484,7 +486,9 @@ async def start_web_server():
 async def main():
     await start_web_server()
     print("Bot va AI server muvaffaqiyatli ishga tushdi...")
-    await dp.start_polling(bot)
+    # Eskirgan ziddiyatli ulanishlarni tozalash (ConflictError ni oldini olish)
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot, drop_pending_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())

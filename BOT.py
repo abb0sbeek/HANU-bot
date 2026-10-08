@@ -10,57 +10,105 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 # ==================== SOZLAMALAR ====================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://enchanting-manatee-9b1ac8.netlify.app")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HwCURijPXZaYfxYjH5IqBIdct7p6tE")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://chipper-banoffee-145251.netlify.app/")
 ADMIN_ID = 1333770643
 LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
 
-# Google Gemini API Kaliti
+# Google Gemini API Kaliti (Render Environment Variables dan olinadi)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # ====================================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# --- ZAXIRA JAVOBLAR (Serverda uzilish bo'lsa ham bot to'xtamasligi uchun) ---
+FALLBACK_RESPONSES = {
+    "salom": (
+        "Assalomu alaykum! Men HANU platformasining AI repetitoriman. "
+        "Koreys tili bo'yicha savollaringiz bo'lsa, bemalol so'rang! Darslarni boshlash uchun esa pastdagi «🚀 Darsni boshlash» tugmasini bosing."
+    ),
+    "salomlashish": (
+        "🇰🇷 <b>Koreys tilida salomlashish turlari:</b>\n\n"
+        "1. <b>안녕하세요 (Annyong-haseyo)</b> — Eng keng tarqalgan, xushmuomala salomlashish (kattalar, hamkasblar, tanishlar uchun).\n"
+        "2. <b>안녕하십니까 (Annyong-hashimnikka)</b> — Juda rasmiy va hurmatli salomlashish (yangiliklar, armiya, rasmiy uchrashuvlarda).\n"
+        "3. <b>안녕 (Annyong)</b> — Norasmiy, faqat tengdosh va yaqin do'stlar orasida ishlatiladi ('Salom/Xayr').\n"
+        "4. <b>처음 뵙겠습니다 (Cho-um boepgesseumnida)</b> — 'Birinchi marta ko'rishib turibmiz' (tanishganda)."
+    ),
+    "안녕하세요": (
+        "안녕하세요! 반갑습니다! (Assalomu alaykum! Tanishganimdan xursandman!)\n"
+        "Koreys tilini o'rganishda sizga qanday yordam bera olaman?"
+    ),
+    "rahmat": (
+        "🇰🇷 <b>Koreys tilida minnatdorchilik bildirish:</b>\n\n"
+        "1. <b>감사합니다 (Kamsahamnida)</b> — Eng rasmiy va keng tarqalgan 'Rahmat'.\n"
+        "2. <b>고마워요 (Komawoyo)</b> — Muloyim, kundalik hayotdagi 'Rahmat'.\n"
+        "3. <b>고마워 (Komawo)</b> — Do'stlar orasida 'Rahmat'."
+    ),
+    "o'rgat": (
+        "Koreys tilini 0 dan boshlab mukammal o'rganish uchun bizning <b>5 bosqichli interaktiv dasturimiz</b> tayyorlangan!\n\n"
+        "Har kuni yangi so'zlar, grammatika, yozish va audio tinglash orqali o'rganasiz. "
+        "Darsni boshlash uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing!"
+    )
+}
+
+def get_fallback_answer(text: str) -> str:
+    t = text.lower().strip()
+    for key, val in FALLBACK_RESPONSES.items():
+        if key in t:
+            return val
+    return ""
+
 # --- GEMINI SUN'IY INTELLEKT MIYASI ---
 async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
     if not GEMINI_API_KEY:
-        return "Kechirasiz, sun'iy intellekt kaliti kiritilmagan."
-    
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
+        fb = get_fallback_answer(prompt)
+        if fb:
+            return fb
+        return (
+            "⚠️ <b>AI Repetitor:</b> Gemini API kaliti topilmadi.\n"
+            "Iltimos, Render sozlamalariga <code>GEMINI_API_KEY</code> ni kiriting."
+        )
+
     parts = []
     if system_instruction:
-        parts.append({"text": f"SYSTEM INSTRUCTION: {system_instruction}\n\n"})
-    parts.append({"text": prompt})
-    
+        parts.append({"text": f"Yo'riqnoma: {system_instruction}\n\nFoydalanuvchi savoli: {prompt}"})
+    else:
+        parts.append({"text": prompt})
+
     payload = {
         "contents": [{"parts": parts}],
         "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 400
+            "temperature": 0.3,
+            "maxOutputTokens": 600
         }
     }
-    
+
+    # Yangi va tezkor Gemini 2.0 va 2.5 modellari
+    models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-pro"]
+
     async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, json=payload, timeout=12) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        content = candidates[0].get("content", {})
-                        parts_resp = content.get("parts", [])
-                        if parts_resp:
-                            return parts_resp[0].get("text", "").strip()
-                else:
-                    err = await resp.text()
-                    print(f"Gemini API error ({resp.status}): {err}")
-        except Exception as e:
-            print("Gemini request exception:", e)
-            
-    return ""
+        for model in models:
+            for ver in ["v1beta", "v1"]:
+                url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={GEMINI_API_KEY}"
+                try:
+                    async with session.post(url, json=payload, timeout=12) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            c_list = data.get("candidates", [])
+                            if c_list:
+                                content = c_list[0].get("content", {})
+                                p_resp = content.get("parts", [])
+                                if p_resp:
+                                    return p_resp[0].get("text", "").strip()
+                except Exception as e:
+                    pass
+
+    fb = get_fallback_answer(prompt)
+    if fb:
+        return fb
+    return "Kechirasiz, sun'iy intellekt serverida vaqtincha uzilish bo'ldi. Birozdan so'ng qayta urinib ko'ring."
 
 async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
     prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.
@@ -78,12 +126,10 @@ Faqat toza JSON formatda javob bering, hech qanday markdown belgilarsiz:
 
     resp = await ask_gemini(prompt)
     try:
-        # JSON tozalash
         clean = resp.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean)
         return data.get("is_correct", False), data.get("feedback", "")
     except Exception:
-        # Agar JSON o'qilmasa, matn tahlili
         is_ok = "true" in resp.lower()
         return is_ok, resp[:100]
 
@@ -121,7 +167,7 @@ def save_user(user_id, first_name, username):
             "INSERT INTO users (user_id, first_name, username, joined_date, last_active) VALUES (?, ?, ?, ?, ?)",
             (user_id, first_name, username, now_str, now_str)
         )
-        conn.commit()
+    conn.commit()
     conn.close()
     return is_new
 
@@ -189,7 +235,7 @@ def get_main_keyboard(user_id=None):
         tugmalar.append([
             InlineKeyboardButton(text="👑 Admin Panel (Statistika)", callback_data="admin_stat_btn")
         ])
-        
+    
     return InlineKeyboardMarkup(inline_keyboard=tugmalar)
 
 # --- BOT HANDLERLARI ---
@@ -220,7 +266,7 @@ async def start_cmd(message: types.Message):
         f"Assalomu alaykum, <b>{ism}</b>!\n\n"
         "🇰🇷 <b>HANU</b> koreys tili platformasiga xush kelibsiz.\n\n"
         "Darslarni boshlash uchun <b>«🚀 Darsni boshlash»</b> tugmasini bosing.\n\n"
-        "💡 <i>Menga istalgan koreyscha so'z yoki grammatika haqida savol yozsangiz, AI Repetitor sifatida darhol javob beraman!</i>"
+        "💡 <i>Menga istalgan koreyscha so'z, gap yoki grammatika haqida savol yozsangiz, AI Repetitor sifatida darhol javob beraman!</i>"
     )
     await message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
 
@@ -232,7 +278,7 @@ async def ai_chat_handler(message: types.Message):
     system_prompt = (
         "Siz 'HANU' koreys tili ta'lim platformasining shaxsiy sun'iy intellekt ustozisiz (AI Repetitor). "
         "Foydalanuvchining savollariga o'zbek tilida juda muloyim, sodda, tushunarli va koreyscha misollar bilan javob bering. "
-        "Javobingiz qisqa, aniq va foydali bo'lsin."
+        "Koreyscha so'zlarning talaffuzi va o'zbekcha ma'nolarini aniq tushuntiring."
     )
     answer = await ask_gemini(user_prompt, system_prompt)
     if answer:
@@ -389,10 +435,9 @@ async def handle_progress(request):
             except Exception as e:
                 print("Kanalga log yozishda xato:", e)
                 
-            return web.json_response({"status": "ok"}, headers=CORS_HEADERS)
+        return web.json_response({"status": "ok"}, headers=CORS_HEADERS)
     except Exception as e:
         return web.json_response({"status": "error", "message": str(e)}, status=400, headers=CORS_HEADERS)
-    return web.json_response({"status": "ignored"}, headers=CORS_HEADERS)
 
 # AI BILAN JAVOBNI AQLLI TEKSHIRISH (Web App dan keladigan so'rovlar uchun)
 async def handle_ai_check(request):

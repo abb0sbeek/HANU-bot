@@ -16,17 +16,17 @@ ADMIN_ID = 1333770643
 LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
 
-# Google Gemini API Kaliti (Render Environment Variables dan olinadi)
+# Google Gemini API Kaliti
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # ====================================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# --- ZAXIRA JAVOBLAR (Serverda uzilish bo'lsa ham bot to'xtamasligi uchun) ---
+# --- ZAXIRA OFFLINE JAVOBLAR (Agar barcha modellar ishlamay qolsa) ---
 FALLBACK_RESPONSES = {
     "salom": (
-        "Assalomu alaykum! Men HANU platformasining AI repetitoriman. "
+        "Assalomu alaykum! Men HANU koreys tili platformasining AI repetitoriman. "
         "Koreys tili bo'yicha savollaringiz bo'lsa, bemalol so'rang! Darslarni boshlash uchun esa pastdagi «🚀 Darsni boshlash» tugmasini bosing."
     ),
     "salomlashish": (
@@ -60,15 +60,32 @@ def get_fallback_answer(text: str) -> str:
             return val
     return ""
 
-# --- GEMINI SUN'IY INTELLEKT MIYASI ---
+# --- KO'P BOSQICHLI GEMINI AI TIZIMI (MULTI-MODEL AUTO-FALLBACK) ---
+GEMINI_MODELS_CASCADE = [
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-flash",
+    "gemini-2.0-pro-exp-02-05",
+    "gemini-1.5-pro-latest",
+    "gemini-1.5-pro",
+    "gemini-pro"
+]
+
+LAST_WORKING_MODEL = None
+
 async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
+    global LAST_WORKING_MODEL
+    
     if not GEMINI_API_KEY:
         fb = get_fallback_answer(prompt)
         if fb:
             return fb
         return (
             "⚠️ <b>AI Repetitor:</b> Gemini API kaliti topilmadi.\n"
-            "Iltimos, Render sozlamalariga <code>GEMINI_API_KEY</code> ni kiriting."
+            "Render Environment bo'limiga <code>GEMINI_API_KEY</code> ni kiriting."
         )
 
     parts = []
@@ -81,34 +98,42 @@ async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
         "contents": [{"parts": parts}],
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 600
+            "maxOutputTokens": 700
         }
     }
 
-    # Yangi va tezkor Gemini 2.0 va 2.5 modellari
-    models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-pro"]
+    test_queue = []
+    if LAST_WORKING_MODEL and LAST_WORKING_MODEL in GEMINI_MODELS_CASCADE:
+        test_queue.append(LAST_WORKING_MODEL)
+    for m in GEMINI_MODELS_CASCADE:
+        if m not in test_queue:
+            test_queue.append(m)
 
     async with aiohttp.ClientSession() as session:
-        for model in models:
-            for ver in ["v1beta", "v1"]:
-                url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        for model in test_queue:
+            for api_version in ["v1beta", "v1"]:
+                url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model}:generateContent?key={GEMINI_API_KEY}"
                 try:
-                    async with session.post(url, json=payload, timeout=12) as resp:
+                    async with session.post(url, json=payload, timeout=10) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            c_list = data.get("candidates", [])
-                            if c_list:
-                                content = c_list[0].get("content", {})
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                content = candidates[0].get("content", {})
                                 p_resp = content.get("parts", [])
                                 if p_resp:
+                                    LAST_WORKING_MODEL = model
+                                    print(f"✅ Gemini muvaffaqiyatli ishladi: {model} ({api_version})")
                                     return p_resp[0].get("text", "").strip()
+                        else:
+                            print(f"⚠️ {model} ({api_version}) xatolik berdi: {resp.status}")
                 except Exception as e:
-                    pass
+                    print(f"⚠️ {model} ({api_version}) ulanishda xato:", e)
 
     fb = get_fallback_answer(prompt)
     if fb:
         return fb
-    return "Kechirasiz, sun'iy intellekt serverida vaqtincha uzilish bo'ldi. Birozdan so'ng qayta urinib ko'ring."
+    return "Kechirasiz, hozirda Google AI serverlarida yangilanish ketmoqda. Iltimos, bir necha daqiqadan so'ng qayta so'rab ko'ring."
 
 async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
     prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.
@@ -458,7 +483,9 @@ async def handle_ai_check(request):
 
 async def start_web_server():
     app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="HANU AI Server 24/7 faol! 🇰🇷🧠", headers=CORS_HEADERS))
+    async def root_handler(request):
+        return web.Response(text="HANU AI Server 24/7 faol! 🇰🇷🧠", headers=CORS_HEADERS)
+    app.router.add_get("/", root_handler)
     app.router.add_options("/api/save-progress", handle_options)
     app.router.add_post("/api/save-progress", handle_progress)
     app.router.add_options("/api/ai-check-answer", handle_options)

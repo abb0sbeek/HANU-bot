@@ -2,6 +2,7 @@ import asyncio
 import os
 import json
 import sqlite3
+import aiohttp
 from datetime import datetime
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
@@ -9,21 +10,82 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 # ==================== SOZLAMALAR ====================
-BOT_TOKEN = "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE"
-WEB_APP_URL = "https://chipper-banoffee-145251.netlify.app/"
-
-# Sizning shaxsiy Telegram ID raqamingiz:
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "SIZNING_BOT_TOKENINGIZ")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://SIZNING-SAYTINGIZ.netlify.app")
 ADMIN_ID = 1333770643
-
-# Sizning shaxsiy yopiq nazorat kanalingiz ID raqami:
 LOG_CHANNEL_ID = -1003919167998
-
-# Bog'lanish uchun profilingiz:
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
+
+# Google Gemini API Kaliti
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # ====================================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# --- GEMINI SUN'IY INTELLEKT MIYASI ---
+async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
+    if not GEMINI_API_KEY:
+        return "Kechirasiz, sun'iy intellekt kaliti kiritilmagan."
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    parts = []
+    if system_instruction:
+        parts.append({"text": f"SYSTEM INSTRUCTION: {system_instruction}\n\n"})
+    parts.append({"text": prompt})
+    
+    payload = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 400
+        }
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=payload, timeout=12) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        content = candidates[0].get("content", {})
+                        parts_resp = content.get("parts", [])
+                        if parts_resp:
+                            return parts_resp[0].get("text", "").strip()
+                else:
+                    err = await resp.text()
+                    print(f"Gemini API error ({resp.status}): {err}")
+        except Exception as e:
+            print("Gemini request exception:", e)
+            
+    return ""
+
+async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
+    prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.
+Koreyscha so'z: "{korean}"
+Lug'atdagi standart o'zbekcha tarjimasi: "{target}"
+O'quvchi kiritgan javob: "{user_answer}"
+Rejim: {mode} (writing = koreyschadan o'zbekchaga tarjima, translation = o'zbekchadan koreyschaga).
+
+Savol: O'quvchi kiritgan javob ushbu so'zning to'g'ri ma'nosi, sinonimi, muqobil ma'nosi yoki joiz tarjimasi hisoblanadimi?
+(Masalan, '이' so'ziga 'ikki' yoki 'bu' yoki 'tish' deb yozsa ham to'g'ri; '사과' so'ziga 'olma' yoki 'kechirim' deb yozsa ham to'g'ri).
+Kichik imlo xatosi bo'lsa ham ma'no to'g'ri bo'lsa to'g'ri deb qabul qiling.
+
+Faqat toza JSON formatda javob bering, hech qanday markdown belgilarsiz:
+{{"is_correct": true, "feedback": "O'zbek tilida 1 jumlada qisqa tushuntirish"}}"""
+
+    resp = await ask_gemini(prompt)
+    try:
+        # JSON tozalash
+        clean = resp.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean)
+        return data.get("is_correct", False), data.get("feedback", "")
+    except Exception:
+        # Agar JSON o'qilmasa, matn tahlili
+        is_ok = "true" in resp.lower()
+        return is_ok, resp[:100]
 
 # --- MAHALLIY BAZA (Statistika hisoblash uchun) ---
 def init_db():
@@ -105,8 +167,7 @@ def get_stats():
 
 init_db()
 
-
-# ================= TUGMALAR =======================
+# --- TUGMALAR ---
 def get_main_keyboard(user_id=None):
     tugmalar = [
         [
@@ -124,7 +185,6 @@ def get_main_keyboard(user_id=None):
         ]
     ]
     
-    # FAQAT SIZGA KO'RINADIGAN ADMIN PANEL TUGMASI:
     if user_id == ADMIN_ID:
         tugmalar.append([
             InlineKeyboardButton(text="👑 Admin Panel (Statistika)", callback_data="admin_stat_btn")
@@ -132,8 +192,7 @@ def get_main_keyboard(user_id=None):
         
     return InlineKeyboardMarkup(inline_keyboard=tugmalar)
 
-
-# ================= BOT HANDLERLARI ====================
+# --- BOT HANDLERLARI ---
 @dp.message(CommandStart())
 async def start_cmd(message: types.Message):
     user = message.from_user
@@ -142,7 +201,6 @@ async def start_cmd(message: types.Message):
     
     is_new = save_user(user.id, ism, username)
     
-    # YANGI O'QUVCHI KIRSA — YOPIQ KANALINGIZGA XABAR YUBORAMIZ:
     if is_new:
         try:
             total, _, _ = get_stats()
@@ -161,12 +219,28 @@ async def start_cmd(message: types.Message):
     xabar = (
         f"Assalomu alaykum, <b>{ism}</b>!\n\n"
         "🇰🇷 <b>HANU</b> koreys tili platformasiga xush kelibsiz.\n\n"
-        "Darslarni boshlash uchun <b>«🚀 Darsni boshlash»</b> tugmasini bosing 👇"
+        "Darslarni boshlash uchun <b>«🚀 Darsni boshlash»</b> tugmasini bosing.\n\n"
+        "💡 <i>Menga istalgan koreyscha so'z yoki grammatika haqida savol yozsangiz, AI Repetitor sifatida darhol javob beraman!</i>"
     )
     await message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
 
+# AI BILAN ERKIN CHAT (Foydalanuvchi botga savol yozganda)
+@dp.message(F.text & ~F.text.startswith("/"))
+async def ai_chat_handler(message: types.Message):
+    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    user_prompt = message.text
+    system_prompt = (
+        "Siz 'HANU' koreys tili ta'lim platformasining shaxsiy sun'iy intellekt ustozisiz (AI Repetitor). "
+        "Foydalanuvchining savollariga o'zbek tilida juda muloyim, sodda, tushunarli va koreyscha misollar bilan javob bering. "
+        "Javobingiz qisqa, aniq va foydali bo'lsin."
+    )
+    answer = await ask_gemini(user_prompt, system_prompt)
+    if answer:
+        await message.reply(f"🤖 <b>AI Ustoz:</b>\n\n{answer}", parse_mode="HTML")
+    else:
+        await message.reply("Kechirasiz, savolingizni tushuna olmadim. Qaytadan so'rab ko'ring.")
 
-# SIZ UCHUN ADMIN PANEL TUGMASI
+# ADMIN PANEL TUGMASI
 @dp.callback_query(F.data.in_(["admin_stat_btn", "refresh_stat"]))
 @dp.message(Command("stat"))
 @dp.message(Command("admin"))
@@ -182,10 +256,10 @@ async def admin_stat_handler(event: types.Message | types.CallbackQuery):
     matn = "👑 <b>ADMIN PANEL — STATISTIKA</b>\n\n"
     matn += f"👥 <b>Jami o'quvchilar:</b> {total} ta\n"
     matn += f"🔥 <b>Bugun dars qilganlar:</b> {active_today} ta\n\n"
-    matn += "🏆 <b>TOP O'QUVCHILAR (XP bo'yicha):</b>\n"
+    matn += "🏆 <b>TOP O'QUVCHILAR (Faollik bo'yicha):</b>\n"
     
     if not top_users:
-        matn += "<i>Hozircha faol o'quvchilar yo'q.</i>\n"
+        matn += "<i>Hozircha dars yakunlaganlar yo'q.</i>\n"
     else:
         for i, u in enumerate(top_users, 1):
             ism, uname, day, xp, last_active = u
@@ -207,7 +281,6 @@ async def admin_stat_handler(event: types.Message | types.CallbackQuery):
         await event.answer("Statistika yangilandi!")
     else:
         await event.answer(matn, reply_markup=admin_klaviatura, parse_mode="HTML")
-
 
 @dp.callback_query(F.data == "my_profile")
 async def profile_handler(callback: types.CallbackQuery):
@@ -246,7 +319,6 @@ async def profile_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(profil_matni, reply_markup=tugmalar, parse_mode="HTML")
     await callback.answer()
 
-
 @dp.callback_query(F.data == "guide")
 async def guide_handler(callback: types.CallbackQuery):
     matn = (
@@ -258,7 +330,8 @@ async def guide_handler(callback: types.CallbackQuery):
         "4️⃣ <b>Tarjima:</b> O'zbekchadan koreyschaga yozish.\n"
         "5️⃣ <b>Tinglash:</b> Audio talaffuzni eshitib topish.\n\n"
         "⚡ <b>Qoida:</b> Har bir bosqichda kamida <b>80%</b> to'plaganingizda keyingi bosqich ochiladi.\n"
-        "🔥 Har kuni dars qilib, o'z <b>Streak</b>ingizni saqlang!"
+        "🔥 Har kuni dars qilib, o'z <b>Streak</b>ingizni saqlang!\n"
+        "🤖 <i>Har qanday savolingiz bo'lsa, botga to'g'ridan-to'g'ri yozsangiz AI Ustoz javob beradi.</i>"
     )
     orqaga = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -268,7 +341,6 @@ async def guide_handler(callback: types.CallbackQuery):
     )
     await callback.message.edit_text(matn, reply_markup=orqaga, parse_mode="HTML")
     await callback.answer()
-
 
 @dp.callback_query(F.data == "back_to_menu")
 async def back_to_menu_handler(callback: types.CallbackQuery):
@@ -281,8 +353,7 @@ async def back_to_menu_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(xabar, reply_markup=get_main_keyboard(callback.from_user.id), parse_mode="HTML")
     await callback.answer()
 
-
-# ================= WEB APP API (NATIJALARNI KANALGA YOZISH) =============
+# --- WEB APP UCHUN API VA 24/7 SERVER ---
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
@@ -292,7 +363,7 @@ CORS_HEADERS = {
 async def handle_options(request):
     return web.Response(headers=CORS_HEADERS)
 
-# O'quvchi dars qilganda Web App dan keladigan natijalarni qabul qilish:
+# Dars natijasini saqlash va kanalga yuborish
 async def handle_progress(request):
     try:
         data = await request.json()
@@ -304,10 +375,7 @@ async def handle_progress(request):
         stage_name = data.get("stage_name", "Dars")
         
         if user_id:
-            # Bazaga yozamiz
             update_progress_in_db(user_id, first_name, username, day, xp)
-            
-            # YOPIQ KANALINGIZGA DARS HISOBOTINI YUBORAMIZ:
             try:
                 log_msg = (
                     "📈 <b>DARS NATIJASI / FAOLLIK</b>\n\n"
@@ -326,12 +394,30 @@ async def handle_progress(request):
         return web.json_response({"status": "error", "message": str(e)}, status=400, headers=CORS_HEADERS)
     return web.json_response({"status": "ignored"}, headers=CORS_HEADERS)
 
+# AI BILAN JAVOBNI AQLLI TEKSHIRISH (Web App dan keladigan so'rovlar uchun)
+async def handle_ai_check(request):
+    try:
+        data = await request.json()
+        korean = data.get("korean", "")
+        target = data.get("target", "")
+        user_answer = data.get("user_answer", "")
+        mode = data.get("mode", "writing")
+        
+        if not user_answer:
+            return web.json_response({"is_correct": False, "feedback": "Javob kiritilmadi."}, headers=CORS_HEADERS)
+            
+        is_ok, feedback = await check_answer_with_ai(korean, target, user_answer, mode)
+        return web.json_response({"is_correct": is_ok, "feedback": feedback}, headers=CORS_HEADERS)
+    except Exception as e:
+        return web.json_response({"is_correct": False, "feedback": f"Xatolik: {str(e)}"}, status=500, headers=CORS_HEADERS)
 
 async def start_web_server():
     app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="HANU Bot 24/7 faol! 🇰🇷", headers=CORS_HEADERS))
+    app.router.add_get("/", lambda r: web.Response(text="HANU AI Server 24/7 faol! 🇰🇷🧠", headers=CORS_HEADERS))
     app.router.add_options("/api/save-progress", handle_options)
     app.router.add_post("/api/save-progress", handle_progress)
+    app.router.add_options("/api/ai-check-answer", handle_options)
+    app.router.add_post("/api/ai-check-answer", handle_ai_check)
     
     runner = web.AppRunner(app)
     await runner.setup()
@@ -341,7 +427,7 @@ async def start_web_server():
 
 async def main():
     await start_web_server()
-    print("Bot muvaffaqiyatli ishga tushdi...")
+    print("Bot va AI server muvaffaqiyatli ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

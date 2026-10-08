@@ -17,13 +17,14 @@ LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
 
 # Google Gemini API Kaliti
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+RAW_GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = RAW_GEMINI_KEY.strip().strip('"').strip("'")
 # ====================================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# --- ZAXIRA OFFLINE JAVOBLAR (Agar barcha modellar ishlamay qolsa) ---
+# --- ZAXIRA OFFLINE JAVOBLAR (Tezkor va kafolatli yordamchi) ---
 FALLBACK_RESPONSES = {
     "salom": (
         "Assalomu alaykum! Men HANU koreys tili platformasining AI repetitoriman. "
@@ -46,6 +47,27 @@ FALLBACK_RESPONSES = {
         "2. <b>고마워요 (Komawoyo)</b> — Muloyim, kundalik hayotdagi 'Rahmat'.\n"
         "3. <b>고마워 (Komawo)</b> — Do'stlar orasida 'Rahmat'."
     ),
+    "olma": (
+        "🍎 <b>Olma</b> koreys tilida <b>사과 (sa-gwa)</b> deyiladi.\n\n"
+        "💡 <i>Qiziqarli fakt:</i> Koreys tilida <b>사과 (sagwa)</b> so'zi ham 'olma', ham 'kechirim so'rash' degan ma'nolarni bildiradi!"
+    ),
+    "qiynalyapman": (
+        "💡 <b>Koreyscha so'zlarni tez va oson yodlash uchun 4 ta oltin qoida:</b>\n\n"
+        "1️⃣ <b>Kuniga 15-20 tadan oshirmang:</b> Bir kunda 50 ta so'z yodlagandan ko'ra, har kuni 15 tadan sifatli yodlash 10 barobar foydaliroq.\n"
+        "2️⃣ <b>HANU 5 bosqichli tizimidan foydalaning:</b> Avval kartochkada ko'ring (Flashcard), keyin testda toping, so'ng klaviaturada o'zingiz yozing va audiosini tinglang.\n"
+        "3️⃣ <b>So'zni gap ichida bog'lang:</b> Masalan, shunchaki '사과' (olma) emas, '사과를 먹어요' (Olma yeyman) deb yodlang.\n"
+        "4️⃣ <b>Ovoz chiqarib ayting:</b> Qulog'ingiz o'z ovozingizni eshitsa, miya so'zni xotirada 2 baravar tez saqlab qoladi!"
+    ),
+    "yodlash": (
+        "💡 <b>Koreyscha so'zlarni tez va oson yodlash uchun 4 ta oltin qoida:</b>\n\n"
+        "1️⃣ <b>Kuniga 15-20 tadan oshirmang:</b> Bir kunda 50 ta so'z yodlagandan ko'ra, har kuni 15 tadan sifatli yodlash 10 barobar foydaliroq.\n"
+        "2️⃣ <b>HANU 5 bosqichli tizimidan foydalaning:</b> Avval kartochkada ko'ring (Flashcard), keyin testda toping, so'ng klaviaturada o'zingiz yozing va audiosini tinglang.\n"
+        "3️⃣ <b>So'zni gap ichida bog'lang:</b> Masalan, shunchaki '사과' (olma) emas, '사과를 먹어요' (Olma yeyman) deb yodlang.\n"
+        "4️⃣ <b>Ovoz chiqarib ayting:</b> Qulog'ingiz o'z ovozingizni eshitsa, miya so'zni xotirada 2 baravar tez saqlab qoladi!"
+    ),
+    "suv": "💧 <b>Suv</b> koreys tilida <b>물 (mul)</b> deyiladi. (Masalan: 물을 마셔요 — Suv ichaman).",
+    "kitob": "📚 <b>Kitob</b> koreys tilida <b>책 (chaek)</b> deyiladi. (Masalan: 책을 읽어요 — Kitob o'qiyman).",
+    "maktab": "🏫 <b>Maktab</b> koreys tilida <b>학교 (hak-kyo)</b> deyiladi. (Masalan: 학교에 가요 — Maktabga boraman).",
     "o'rgat": (
         "Koreys tilini 0 dan boshlab mukammal o'rganish uchun bizning <b>5 bosqichli interaktiv dasturimiz</b> tayyorlangan!\n\n"
         "Har kuni yangi so'zlar, grammatika, yozish va audio tinglash orqali o'rganasiz. "
@@ -60,26 +82,10 @@ def get_fallback_answer(text: str) -> str:
             return val
     return ""
 
-# --- KO'P BOSQICHLI GEMINI AI TIZIMI (MULTI-MODEL AUTO-FALLBACK) ---
-GEMINI_MODELS_CASCADE = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-flash",
-    "gemini-2.0-pro-exp-02-05",
-    "gemini-1.5-pro-latest",
-    "gemini-1.5-pro",
-    "gemini-pro"
-]
-
-LAST_WORKING_MODEL = None
-
+# --- KO'P BOSQICHLI GEMINI AI TIZIMI ---
 async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
-    global LAST_WORKING_MODEL
-    
-    if not GEMINI_API_KEY:
+    key = GEMINI_API_KEY
+    if not key:
         fb = get_fallback_answer(prompt)
         if fb:
             return fb
@@ -87,6 +93,8 @@ async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
             "⚠️ <b>AI Repetitor:</b> Gemini API kaliti topilmadi.\n"
             "Render Environment bo'limiga <code>GEMINI_API_KEY</code> ni kiriting."
         )
+
+    fb = get_fallback_answer(prompt)
 
     parts = []
     if system_instruction:
@@ -102,38 +110,62 @@ async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
         }
     }
 
-    test_queue = []
-    if LAST_WORKING_MODEL and LAST_WORKING_MODEL in GEMINI_MODELS_CASCADE:
-        test_queue.append(LAST_WORKING_MODEL)
-    for m in GEMINI_MODELS_CASCADE:
-        if m not in test_queue:
-            test_queue.append(m)
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": key
+    }
+
+    candidates = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-pro"]
+    last_error_details = ""
 
     async with aiohttp.ClientSession() as session:
-        for model in test_queue:
-            for api_version in ["v1beta", "v1"]:
-                url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        try:
+            async with session.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}", headers=headers, timeout=5) as m_resp:
+                if m_resp.status == 200:
+                    m_data = await m_resp.json()
+                    avail = [m.get("name", "").replace("models/", "") for m in m_data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+                    if avail:
+                        candidates = [x for x in avail if "flash" in x] + avail + candidates
+                else:
+                    m_err = await m_resp.text()
+                    last_error_details = f"ListModels={m_resp.status}: {m_err[:120]}"
+        except Exception:
+            pass
+
+        seen = set()
+        for model in candidates:
+            if model in seen:
+                continue
+            seen.add(model)
+            
+            for ver in ["v1beta", "v1"]:
+                url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={key}"
                 try:
-                    async with session.post(url, json=payload, timeout=10) as resp:
+                    async with session.post(url, json=payload, headers=headers, timeout=10) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            candidates = data.get("candidates", [])
-                            if candidates:
-                                content = candidates[0].get("content", {})
+                            c_list = data.get("candidates", [])
+                            if c_list:
+                                content = c_list[0].get("content", {})
                                 p_resp = content.get("parts", [])
                                 if p_resp:
-                                    LAST_WORKING_MODEL = model
-                                    print(f"✅ Gemini muvaffaqiyatli ishladi: {model} ({api_version})")
+                                    print(f"✅ Gemini ishladi: {model} ({ver})")
                                     return p_resp[0].get("text", "").strip()
                         else:
-                            print(f"⚠️ {model} ({api_version}) xatolik berdi: {resp.status}")
+                            resp_err = await resp.text()
+                            last_error_details = f"{model} ({ver}) {resp.status}: {resp_err[:120]}"
+                            print(f"⚠️ {model} ({ver}) {resp.status}: {resp_err[:120]}")
                 except Exception as e:
-                    print(f"⚠️ {model} ({api_version}) ulanishda xato:", e)
+                    last_error_details = f"Ulanish xatosi: {str(e)}"
 
-    fb = get_fallback_answer(prompt)
     if fb:
         return fb
-    return "Kechirasiz, hozirda Google AI serverlarida yangilanish ketmoqda. Iltimos, bir necha daqiqadan so'ng qayta so'rab ko'ring."
+
+    return (
+        f"⚠️ <b>Google AI xatoligi:</b>\n"
+        f"<code>{last_error_details}</code>\n\n"
+        "💡 <i>Google AI serveri bu kalitga ruxsat bermadi.</i>"
+    )
 
 async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
     prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.

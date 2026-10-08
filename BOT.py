@@ -17,105 +17,107 @@ LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
 
 # Google Gemini API Kaliti
-RAW_GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_API_KEY = RAW_GEMINI_KEY.strip().strip('"').strip("'")
+RAW_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = RAW_KEY.strip().strip('"').strip("'")
 # ====================================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# --- ZAXIRA OFFLINE JAVOBLAR ---
+# --- ZAXIRA OFFLINE JAVOBLAR (Faqat aniq so'zlar uchun) ---
 FALLBACK_RESPONSES = {
-    "salom": "Assalomu alaykum! Koreys tili bo'yicha savolingiz bormi? Darslarni boshlash uchun pastdagi «🚀 Darsni boshlash» tugmasini bosing.",
-    "qalesiz": "Rahmat, yaxshi! Koreys tilini o'rganishga tayyormisiz? Savolingiz bo'lsa yozing.",
-    "안녕하세요": "안녕하세요! 반갑습니다! (Assalomu alaykum! Tanishganimdan xursandman!) Qanday yordam bera olaman?",
+    "salom": "Assalomu alaykum! Koreys tili bo'yicha qanday savolingiz bor? Darslarni boshlash uchun pastdagi «🚀 Darsni boshlash» tugmasini bosing.",
+    "qalesiz": "Rahmat, yaxshi! Koreys tilini o'rganishda qanday yordam bera olaman?",
+    "안녕하세요": "안녕하세요! 반갑습니다! (Assalomu alaykum! Tanishganimdan xursandman!)",
     "rahmat": "Arzimaydi! Koreys tilida 'rahmat' — <b>감사합니다 (kamsahamnida)</b> yoki do'stlar orasida <b>고마워 (komawo)</b>.",
     "o'rgat": "Koreys tilini 0 dan boshlash uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing!"
 }
 
 def get_fallback_answer(text: str) -> str:
     t = text.lower().strip()
-    for key, val in FALLBACK_RESPONSES.items():
-        if t == key or (len(t) < 15 and key in t):
-            return val
+    if t in FALLBACK_RESPONSES:
+        return FALLBACK_RESPONSES[t]
     return ""
 
-# --- KO'P BOSQICHLI GEMINI AI TIZIMI ---
-LAST_WORKING_MODEL = "gemini-2.0-flash"
+# --- ISHLAYDIGAN KASKADLI GEMINI MODELLARI ---
+GEMINI_MODELS_CASCADE = [
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-flash",
+    "gemini-2.0-pro-exp-02-05",
+    "gemini-1.5-pro-latest",
+    "gemini-1.5-pro",
+    "gemini-pro"
+]
 
-async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
+LAST_WORKING_MODEL = None
+
+async def ask_gemini(prompt: str, is_simple: bool = False) -> str:
     global LAST_WORKING_MODEL
-    key = GEMINI_API_KEY
-    if not key:
+    if not GEMINI_API_KEY:
         fb = get_fallback_answer(prompt)
         return fb or "⚠️ Gemini API kaliti kiritilmagan."
 
-    # Payload tayyorlash (aniq va lo'nda javob uchun chegaralangan)
+    # Qat'iy lo'nda va moslashuvchan yo'riqnoma:
+    if is_simple:
+        instruction = (
+            "Siz 'HANU' koreys tili repetitorisiz. "
+            "Foydalanuvchi oddiy so'z yoki tarjima so'radi. "
+            "QAT'IY TALAB: Javobingiz atigi 1-2 qatordan oshmasin! "
+            "Hech qanday kirish ('Salom...'), xulosa ('Fighting!'), yoki qiziqarli faktlar YOZMANG! "
+            "Format: So'z — **Koreyscha** [talaffuz]. Misol: koreyscha gap (o'zbekcha tarjima)."
+        )
+        max_tokens = 150
+    else:
+        instruction = (
+            "Siz 'HANU' koreys tili repetitorisiz. "
+            "QAT'IY TALAB: Ortiqcha kirish va xulosa gaplarsiz, to'g'ridan-to'g'ri savolga javob bering. "
+            "Mavzuni cho'zmasdan, eng muhim 3-4 ta amaliy punktda ixcham va lo'nda tushuntiring."
+        )
+        max_tokens = 350
+
+    parts = [{"text": f"Yo'riqnoma: {instruction}\n\nFoydalanuvchi savoli: {prompt}"}]
+
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"parts": parts}],
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 450
+            "maxOutputTokens": max_tokens
         }
     }
-    
-    if system_instruction:
-        payload["systemInstruction"] = {
-            "parts": [{"text": system_instruction}]
-        }
 
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": key
-    }
-
-    candidates = [LAST_WORKING_MODEL, "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest", "gemini-pro"]
-    seen = set()
     test_models = []
-    for m in candidates:
-        if m and m not in seen:
-            seen.add(m)
+    if LAST_WORKING_MODEL and LAST_WORKING_MODEL in GEMINI_MODELS_CASCADE:
+        test_models.append(LAST_WORKING_MODEL)
+    for m in GEMINI_MODELS_CASCADE:
+        if m not in test_models:
             test_models.append(m)
-
-    last_error = ""
 
     async with aiohttp.ClientSession() as session:
         for model in test_models:
             for ver in ["v1beta", "v1"]:
-                url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={key}"
+                url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={GEMINI_API_KEY}"
                 try:
-                    async with session.post(url, json=payload, headers=headers, timeout=9) as resp:
+                    async with session.post(url, json=payload, timeout=10) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            candidates_list = data.get("candidates", [])
-                            if candidates_list:
-                                content = candidates_list[0].get("content", {})
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                content = candidates[0].get("content", {})
                                 p_resp = content.get("parts", [])
                                 if p_resp:
                                     LAST_WORKING_MODEL = model
                                     return p_resp[0].get("text", "").strip()
-                        else:
-                            err_t = await resp.text()
-                            last_error = f"{model} ({resp.status})"
-                            # Agar systemInstruction ni qo'llab-quvvatlamasa, promptga qo'shib qayta sinaymiz
-                            if "systemInstruction" in err_t:
-                                p2 = {
-                                    "contents": [{"parts": [{"text": f"{system_instruction}\n\nSavol: {prompt}"}]}],
-                                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 450}
-                                }
-                                async with session.post(url, json=p2, headers=headers, timeout=9) as r2:
-                                    if r2.status == 200:
-                                        d2 = await r2.json()
-                                        c2 = d2.get("candidates", [])
-                                        if c2:
-                                            return c2[0].get("content", {}).get("parts", [])[0].get("text", "").strip()
-                except Exception as e:
-                    last_error = str(e)
+                except Exception:
+                    pass
 
     fb = get_fallback_answer(prompt)
     if fb:
         return fb
-    return f"Kechirasiz, sun'iy intellekt javob bera olmadi ({last_error}). Birozdan so'ng qayta urinib ko'ring."
+    return "Kechirasiz, sun'iy intellekt serverida vaqtincha uzilish bo'ldi. Birozdan so'ng qayta urinib ko'ring."
 
 async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
     prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.
@@ -131,7 +133,7 @@ Kichik imlo xatosi bo'lsa ham ma'no to'g'ri bo'lsa to'g'ri deb qabul qiling.
 Faqat toza JSON formatda javob bering, hech qanday markdown belgilarsiz:
 {{"is_correct": true, "feedback": "O'zbek tilida 1 jumlada qisqa tushuntirish"}}"""
 
-    resp = await ask_gemini(prompt)
+    resp = await ask_gemini(prompt, is_simple=True)
     try:
         clean = resp.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean)
@@ -277,31 +279,17 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
 
-# AI BILAN ERKIN CHAT (Foydalanuvchi botga savol yozganda)
+# AI BILAN ERKIN CHAT
 @dp.message(F.text & ~F.text.startswith("/"))
 async def ai_chat_handler(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    user_prompt = message.text
+    user_prompt = message.text.strip()
     
-    # AQLLI VA MOSLASHUVCHAN (ADAPTIVE) TIZIM KO'RSATMASI:
-    system_prompt = (
-        "Siz 'HANU' koreys tili platformasining aqlli va lo'nda repetitorisiz. "
-        "JAVOB BERISH BO'YICHA QAT'IY QOIDALAR:\n"
-        "1. HECH QACHON ortiqcha kirish gaplar ('Salom! HANU ga xush kelibsiz!'), "
-        "xushomadlar yoki yakuniy xulosa gaplar ('Fighting! Yana so'rang') YOZMANG. Darhol savol mohiyatiga o'ting!\n"
-        "2. ODDIY SAVOLLARGA JUDA QISQA VA ANIQ JAVOB BERING:\n"
-        "   - Agar bitta so'z yoki tarjima so'ralsa (masalan 'olma nima degani', 'kitob koreyscha'): "
-        "Javobingiz atigi 1-2 qatordan oshmasin. Faqat so'z, talaffuzi va 1 ta ixcham misol keltiring. "
-        "Ortiqcha qiziqarli faktlar yoki uzun izohlar yozmang!\n"
-        "     Namuna: '🍎 Olma — **사과** [sa-gwa]. Misol: 사과를 먹어요 (Olma yeyman).'\n"
-        "   - Agar oddiy salomlashsa ('salom', 'qalesan'): 1 jumlada do'stona javob bering.\n"
-        "3. MURAKKAB SAVOLLARGA TARTIBLI VA AMALIY JAVOB BERING:\n"
-        "   - Agar o'quvchi maslahat so'rasa (masalan 'so'z yodlashda qiynalyapman') yoki grammatika farqini so'rasa, "
-        "ortiqcha suvsiz, aniq 3-4 ta punktda ixcham va tushunarli qilib yozing.\n"
-        "4. Telegram formatida qulay va ixcham o'qiladigan qilib yozing."
-    )
+    # Savol qisqa yoki oddiy so'z ekanligini aniqlash:
+    words = user_prompt.split()
+    is_simple = len(words) <= 4 or "nima degani" in user_prompt.lower() or "tarjima" in user_prompt.lower()
     
-    answer = await ask_gemini(user_prompt, system_prompt)
+    answer = await ask_gemini(user_prompt, is_simple=is_simple)
     if answer:
         await message.reply(f"🤖 <b>AI Ustoz:</b>\n\n{answer}", parse_mode="HTML")
     else:

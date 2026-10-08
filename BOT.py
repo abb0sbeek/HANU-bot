@@ -24,148 +24,98 @@ GEMINI_API_KEY = RAW_GEMINI_KEY.strip().strip('"').strip("'")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# --- ZAXIRA OFFLINE JAVOBLAR (Tezkor va kafolatli yordamchi) ---
+# --- ZAXIRA OFFLINE JAVOBLAR ---
 FALLBACK_RESPONSES = {
-    "salom": (
-        "Assalomu alaykum! Men HANU koreys tili platformasining AI repetitoriman. "
-        "Koreys tili bo'yicha savollaringiz bo'lsa, bemalol so'rang! Darslarni boshlash uchun esa pastdagi «🚀 Darsni boshlash» tugmasini bosing."
-    ),
-    "salomlashish": (
-        "🇰🇷 <b>Koreys tilida salomlashish turlari:</b>\n\n"
-        "1. <b>안녕하세요 (Annyong-haseyo)</b> — Eng keng tarqalgan, xushmuomala salomlashish (kattalar, hamkasblar, tanishlar uchun).\n"
-        "2. <b>안녕하십니까 (Annyong-hashimnikka)</b> — Juda rasmiy va hurmatli salomlashish (yangiliklar, armiya, rasmiy uchrashuvlarda).\n"
-        "3. <b>안녕 (Annyong)</b> — Norasmiy, faqat tengdosh va yaqin do'stlar orasida ishlatiladi ('Salom/Xayr').\n"
-        "4. <b>처음 뵙겠습니다 (Cho-um boepgesseumnida)</b> — 'Birinchi marta ko'rishib turibmiz' (tanishganda)."
-    ),
-    "안녕하세요": (
-        "안녕하세요! 반갑습니다! (Assalomu alaykum! Tanishganimdan xursandman!)\n"
-        "Koreys tilini o'rganishda sizga qanday yordam bera olaman?"
-    ),
-    "rahmat": (
-        "🇰🇷 <b>Koreys tilida minnatdorchilik bildirish:</b>\n\n"
-        "1. <b>감사합니다 (Kamsahamnida)</b> — Eng rasmiy va keng tarqalgan 'Rahmat'.\n"
-        "2. <b>고마워요 (Komawoyo)</b> — Muloyim, kundalik hayotdagi 'Rahmat'.\n"
-        "3. <b>고마워 (Komawo)</b> — Do'stlar orasida 'Rahmat'."
-    ),
-    "olma": (
-        "🍎 <b>Olma</b> koreys tilida <b>사과 (sa-gwa)</b> deyiladi.\n\n"
-        "💡 <i>Qiziqarli fakt:</i> Koreys tilida <b>사과 (sagwa)</b> so'zi ham 'olma', ham 'kechirim so'rash' degan ma'nolarni bildiradi!"
-    ),
-    "qiynalyapman": (
-        "💡 <b>Koreyscha so'zlarni tez va oson yodlash uchun 4 ta oltin qoida:</b>\n\n"
-        "1️⃣ <b>Kuniga 15-20 tadan oshirmang:</b> Bir kunda 50 ta so'z yodlagandan ko'ra, har kuni 15 tadan sifatli yodlash 10 barobar foydaliroq.\n"
-        "2️⃣ <b>HANU 5 bosqichli tizimidan foydalaning:</b> Avval kartochkada ko'ring (Flashcard), keyin testda toping, so'ng klaviaturada o'zingiz yozing va audiosini tinglang.\n"
-        "3️⃣ <b>So'zni gap ichida bog'lang:</b> Masalan, shunchaki '사과' (olma) emas, '사과를 먹어요' (Olma yeyman) deb yodlang.\n"
-        "4️⃣ <b>Ovoz chiqarib ayting:</b> Qulog'ingiz o'z ovozingizni eshitsa, miya so'zni xotirada 2 baravar tez saqlab qoladi!"
-    ),
-    "yodlash": (
-        "💡 <b>Koreyscha so'zlarni tez va oson yodlash uchun 4 ta oltin qoida:</b>\n\n"
-        "1️⃣ <b>Kuniga 15-20 tadan oshirmang:</b> Bir kunda 50 ta so'z yodlagandan ko'ra, har kuni 15 tadan sifatli yodlash 10 barobar foydaliroq.\n"
-        "2️⃣ <b>HANU 5 bosqichli tizimidan foydalaning:</b> Avval kartochkada ko'ring (Flashcard), keyin testda toping, so'ng klaviaturada o'zingiz yozing va audiosini tinglang.\n"
-        "3️⃣ <b>So'zni gap ichida bog'lang:</b> Masalan, shunchaki '사과' (olma) emas, '사과를 먹어요' (Olma yeyman) deb yodlang.\n"
-        "4️⃣ <b>Ovoz chiqarib ayting:</b> Qulog'ingiz o'z ovozingizni eshitsa, miya so'zni xotirada 2 baravar tez saqlab qoladi!"
-    ),
-    "suv": "💧 <b>Suv</b> koreys tilida <b>물 (mul)</b> deyiladi. (Masalan: 물을 마셔요 — Suv ichaman).",
-    "kitob": "📚 <b>Kitob</b> koreys tilida <b>책 (chaek)</b> deyiladi. (Masalan: 책을 읽어요 — Kitob o'qiyman).",
-    "maktab": "🏫 <b>Maktab</b> koreys tilida <b>학교 (hak-kyo)</b> deyiladi. (Masalan: 학교에 가요 — Maktabga boraman).",
-    "o'rgat": (
-        "Koreys tilini 0 dan boshlab mukammal o'rganish uchun bizning <b>5 bosqichli interaktiv dasturimiz</b> tayyorlangan!\n\n"
-        "Har kuni yangi so'zlar, grammatika, yozish va audio tinglash orqali o'rganasiz. "
-        "Darsni boshlash uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing!"
-    )
+    "salom": "Assalomu alaykum! Koreys tili bo'yicha savolingiz bormi? Darslarni boshlash uchun pastdagi «🚀 Darsni boshlash» tugmasini bosing.",
+    "qalesiz": "Rahmat, yaxshi! Koreys tilini o'rganishga tayyormisiz? Savolingiz bo'lsa yozing.",
+    "안녕하세요": "안녕하세요! 반갑습니다! (Assalomu alaykum! Tanishganimdan xursandman!) Qanday yordam bera olaman?",
+    "rahmat": "Arzimaydi! Koreys tilida 'rahmat' — <b>감사합니다 (kamsahamnida)</b> yoki do'stlar orasida <b>고마워 (komawo)</b>.",
+    "o'rgat": "Koreys tilini 0 dan boshlash uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing!"
 }
 
 def get_fallback_answer(text: str) -> str:
     t = text.lower().strip()
     for key, val in FALLBACK_RESPONSES.items():
-        if key in t:
+        if t == key or (len(t) < 15 and key in t):
             return val
     return ""
 
 # --- KO'P BOSQICHLI GEMINI AI TIZIMI ---
+LAST_WORKING_MODEL = "gemini-2.0-flash"
+
 async def ask_gemini(prompt: str, system_instruction: str = "") -> str:
+    global LAST_WORKING_MODEL
     key = GEMINI_API_KEY
     if not key:
         fb = get_fallback_answer(prompt)
-        if fb:
-            return fb
-        return (
-            "⚠️ <b>AI Repetitor:</b> Gemini API kaliti topilmadi.\n"
-            "Render Environment bo'limiga <code>GEMINI_API_KEY</code> ni kiriting."
-        )
+        return fb or "⚠️ Gemini API kaliti kiritilmagan."
 
-    fb = get_fallback_answer(prompt)
-
-    parts = []
-    if system_instruction:
-        parts.append({"text": f"Yo'riqnoma: {system_instruction}\n\nFoydalanuvchi savoli: {prompt}"})
-    else:
-        parts.append({"text": prompt})
-
+    # Payload tayyorlash (aniq va lo'nda javob uchun chegaralangan)
     payload = {
-        "contents": [{"parts": parts}],
+        "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 700
+            "temperature": 0.2,
+            "maxOutputTokens": 450
         }
     }
+    
+    if system_instruction:
+        payload["systemInstruction"] = {
+            "parts": [{"text": system_instruction}]
+        }
 
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": key
     }
 
-    candidates = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-pro"]
-    last_error_details = ""
+    candidates = [LAST_WORKING_MODEL, "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest", "gemini-pro"]
+    seen = set()
+    test_models = []
+    for m in candidates:
+        if m and m not in seen:
+            seen.add(m)
+            test_models.append(m)
+
+    last_error = ""
 
     async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}", headers=headers, timeout=5) as m_resp:
-                if m_resp.status == 200:
-                    m_data = await m_resp.json()
-                    avail = [m.get("name", "").replace("models/", "") for m in m_data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-                    if avail:
-                        candidates = [x for x in avail if "flash" in x] + avail + candidates
-                else:
-                    m_err = await m_resp.text()
-                    last_error_details = f"ListModels={m_resp.status}: {m_err[:120]}"
-        except Exception:
-            pass
-
-        seen = set()
-        for model in candidates:
-            if model in seen:
-                continue
-            seen.add(model)
-            
+        for model in test_models:
             for ver in ["v1beta", "v1"]:
                 url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={key}"
                 try:
-                    async with session.post(url, json=payload, headers=headers, timeout=10) as resp:
+                    async with session.post(url, json=payload, headers=headers, timeout=9) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            c_list = data.get("candidates", [])
-                            if c_list:
-                                content = c_list[0].get("content", {})
+                            candidates_list = data.get("candidates", [])
+                            if candidates_list:
+                                content = candidates_list[0].get("content", {})
                                 p_resp = content.get("parts", [])
                                 if p_resp:
-                                    print(f"✅ Gemini ishladi: {model} ({ver})")
+                                    LAST_WORKING_MODEL = model
                                     return p_resp[0].get("text", "").strip()
                         else:
-                            resp_err = await resp.text()
-                            last_error_details = f"{model} ({ver}) {resp.status}: {resp_err[:120]}"
-                            print(f"⚠️ {model} ({ver}) {resp.status}: {resp_err[:120]}")
+                            err_t = await resp.text()
+                            last_error = f"{model} ({resp.status})"
+                            # Agar systemInstruction ni qo'llab-quvvatlamasa, promptga qo'shib qayta sinaymiz
+                            if "systemInstruction" in err_t:
+                                p2 = {
+                                    "contents": [{"parts": [{"text": f"{system_instruction}\n\nSavol: {prompt}"}]}],
+                                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 450}
+                                }
+                                async with session.post(url, json=p2, headers=headers, timeout=9) as r2:
+                                    if r2.status == 200:
+                                        d2 = await r2.json()
+                                        c2 = d2.get("candidates", [])
+                                        if c2:
+                                            return c2[0].get("content", {}).get("parts", [])[0].get("text", "").strip()
                 except Exception as e:
-                    last_error_details = f"Ulanish xatosi: {str(e)}"
+                    last_error = str(e)
 
+    fb = get_fallback_answer(prompt)
     if fb:
         return fb
-
-    return (
-        f"⚠️ <b>Google AI xatoligi:</b>\n"
-        f"<code>{last_error_details}</code>\n\n"
-        "💡 <i>Google AI serveri bu kalitga ruxsat bermadi.</i>"
-    )
+    return f"Kechirasiz, sun'iy intellekt javob bera olmadi ({last_error}). Birozdan so'ng qayta urinib ko'ring."
 
 async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
     prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.
@@ -332,11 +282,25 @@ async def start_cmd(message: types.Message):
 async def ai_chat_handler(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
     user_prompt = message.text
+    
+    # AQLLI VA MOSLASHUVCHAN (ADAPTIVE) TIZIM KO'RSATMASI:
     system_prompt = (
-        "Siz 'HANU' koreys tili ta'lim platformasining shaxsiy sun'iy intellekt ustozisiz (AI Repetitor). "
-        "Foydalanuvchining savollariga o'zbek tilida juda muloyim, sodda, tushunarli va koreyscha misollar bilan javob bering. "
-        "Koreyscha so'zlarning talaffuzi va o'zbekcha ma'nolarini aniq tushuntiring."
+        "Siz 'HANU' koreys tili platformasining aqlli va lo'nda repetitorisiz. "
+        "JAVOB BERISH BO'YICHA QAT'IY QOIDALAR:\n"
+        "1. HECH QACHON ortiqcha kirish gaplar ('Salom! HANU ga xush kelibsiz!'), "
+        "xushomadlar yoki yakuniy xulosa gaplar ('Fighting! Yana so'rang') YOZMANG. Darhol savol mohiyatiga o'ting!\n"
+        "2. ODDIY SAVOLLARGA JUDA QISQA VA ANIQ JAVOB BERING:\n"
+        "   - Agar bitta so'z yoki tarjima so'ralsa (masalan 'olma nima degani', 'kitob koreyscha'): "
+        "Javobingiz atigi 1-2 qatordan oshmasin. Faqat so'z, talaffuzi va 1 ta ixcham misol keltiring. "
+        "Ortiqcha qiziqarli faktlar yoki uzun izohlar yozmang!\n"
+        "     Namuna: '🍎 Olma — **사과** [sa-gwa]. Misol: 사과를 먹어요 (Olma yeyman).'\n"
+        "   - Agar oddiy salomlashsa ('salom', 'qalesan'): 1 jumlada do'stona javob bering.\n"
+        "3. MURAKKAB SAVOLLARGA TARTIBLI VA AMALIY JAVOB BERING:\n"
+        "   - Agar o'quvchi maslahat so'rasa (masalan 'so'z yodlashda qiynalyapman') yoki grammatika farqini so'rasa, "
+        "ortiqcha suvsiz, aniq 3-4 ta punktda ixcham va tushunarli qilib yozing.\n"
+        "4. Telegram formatida qulay va ixcham o'qiladigan qilib yozing."
     )
+    
     answer = await ask_gemini(user_prompt, system_prompt)
     if answer:
         await message.reply(f"🤖 <b>AI Ustoz:</b>\n\n{answer}", parse_mode="HTML")

@@ -13,7 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://enchanting-manatee-9b1ac8.netlify.app?v=2.2")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://radiant-kulfi-a8a450.netlify.app?v=2.2")
 ADMIN_ID = 1333770643
 LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"

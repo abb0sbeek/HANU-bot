@@ -13,11 +13,12 @@ from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://radiant-kulfi-a8a450.netlify.app?v=2.2")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://profound-dango-74747d.netlify.app?v=2.2")
 ADMIN_ID = 1333770643
 LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
 
+# Google Gemini API Kaliti
 RAW_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_API_KEY = RAW_KEY.strip().strip('"').strip("'")
 # ====================================================
@@ -28,6 +29,7 @@ dp = Dispatcher()
 class AdminStates(StatesGroup):
     waiting_for_broadcast = State()
 
+# --- TEZKOR ZAXIRA BAZASI ---
 FAST_KNOWLEDGE_BASE = {
     "olma": "🍎 **Olma** — **사과** [sa-gwa].\n*Misol:* 사과를 먹어요 (Olma yeyman).",
     "suv": "💧 **Suv** — **물** [mul].\n*Misol:* 물을 마셔요 (Suv ichaman).",
@@ -67,6 +69,7 @@ def check_fast_knowledge(prompt: str) -> str:
             return v
     return ""
 
+# --- GEMINI SUN'IY INTELLEKT (Tezkor va lo'nda) ---
 async def ask_gemini(prompt: str, is_simple: bool = False) -> str:
     fast_resp = check_fast_knowledge(prompt)
     if fast_resp:
@@ -121,21 +124,53 @@ async def ask_gemini(prompt: str, is_simple: bool = False) -> str:
 
     return "Koreys tili bo'yicha savolingiz qabul qilindi. Aniqroq so'rab ko'ring yoki pastdagi «🚀 Darsni boshlash» tugmasi orqali darslarga o'ting."
 
+# AI orqali toza baholash (Zaxira lug'atga aralashmasdan to'g'ridan-to'g'ri Gemini ga boradi)
+async def ask_gemini_pure(prompt: str) -> str:
+    key = GEMINI_API_KEY
+    if not key:
+        return ""
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 150
+        }
+    }
+
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest"]
+    async with aiohttp.ClientSession() as session:
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            try:
+                async with session.post(url, json=payload, timeout=6) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            content = candidates[0].get("content", {})
+                            parts = content.get("parts", [])
+                            if parts:
+                                return parts[0].get("text", "").strip()
+            except Exception:
+                pass
+    return ""
+
 async def check_answer_with_ai(korean: str, target: str, user_answer: str, mode: str):
-    prompt = f"""Koreys tili va o'zbek tili mutaxassisi sifatida baholang.
+    prompt = f"""Siz koreys tili va o'zbek tili bo'yicha qat'iy va aqlli imtihonchisisiz.
 Koreyscha so'z: "{korean}"
-Lug'atdagi standart o'zbekcha tarjimasi: "{target}"
-O'quvchi kiritgan javob: "{user_answer}"
-Rejim: {mode} (writing = koreyschadan o'zbekchaga tarjima, translation = o'zbekchadan koreyschaga).
+Lug'atdagi standart tarjima: "{target}"
+O'quvchi yozgan javob: "{user_answer}"
+Rejim: {mode} (writing = koreyschadan o'zbekchaga, translation = o'zbekchadan koreyschaga).
 
-Savol: O'quvchi kiritgan javob ushbu so'zning to'g'ri ma'nosi, sinonimi, muqobil ma'nosi yoki joiz tarjimasi hisoblanadimi?
-(Masalan, '이' so'ziga 'ikki' yoki 'bu' yoki 'tish' deb yozsa ham to'g'ri; '사과' so'ziga 'olma' yoki 'kechirim' deb yozsa ham to'g'ri).
-Kichik imlo xatosi bo'lsa ham ma'no to'g'ri bo'lsa to'g'ri deb qabul qiling.
+Baholash mezonlari:
+1. Agar o'quvchi ushbu so'zning to'g'ri ma'nosi, sinonimi, muqobil ma'nosi yoki joiz tarjimasini yozgan bo'lsa (masalan '안녕하세요' ga 'salom' yoki 'assalomu alaykum' deb yozsa ham), to'g'ri deb qabul qiling.
+2. Oddiy va jingalak apostrof (o'qing vs o`qing vs o’qing) farqi bo'lsa ham to'g'ri deb qabul qiling.
+3. Kichik imlo xatosi bo'lsa-da ma'no to'g'ri bo'lsa to'g'ri deb hisoblang.
+4. Javobingiz FAQAT toza JSON bo'lsin:
+{{"is_correct": true, "feedback": "1 qisqa jumla izoh"}}"""
 
-Faqat toza JSON formatda javob bering, hech qanday markdown belgilarsiz:
-{{"is_correct": true, "feedback": "O'zbek tilida 1 jumlada qisqa tushuntirish"}}"""
-
-    resp = await ask_gemini(prompt, is_simple=True)
+    resp = await ask_gemini_pure(prompt)
     try:
         clean = resp.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean)
@@ -144,6 +179,7 @@ Faqat toza JSON formatda javob bering, hech qanday markdown belgilarsiz:
         is_ok = "true" in resp.lower()
         return is_ok, resp[:100]
 
+# --- MAHALLIY BAZA VA SOZLAMALAR ---
 def init_db():
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
@@ -161,6 +197,7 @@ def init_db():
             reminder_enabled INTEGER DEFAULT 1
         )
     """)
+    # Eski bazalar uchun yangi ustunlarni tekshirib qo'shish:
     extra_cols = [
         ("current_day", "INTEGER DEFAULT 1"),
         ("xp", "INTEGER DEFAULT 0"),
@@ -174,6 +211,9 @@ def init_db():
             cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
             pass
+    conn.commit()
+    # Sinov / brauzer orqali tushib qolgan user_id = 0 yozuvlarni tozalash:
+    cursor.execute("DELETE FROM users WHERE user_id <= 0")
     conn.commit()
     conn.close()
 
@@ -237,7 +277,7 @@ def get_leaderboard(current_user_id):
     c = conn.cursor()
     c.execute("""
         SELECT user_id, first_name, username, current_day, xp 
-        FROM users ORDER BY xp DESC, current_day DESC LIMIT 10
+        FROM users WHERE user_id > 0 ORDER BY xp DESC, current_day DESC LIMIT 10
     """)
     top_10 = c.fetchall()
     
@@ -285,6 +325,7 @@ def get_all_user_ids():
 
 init_db()
 
+# --- TUGMALAR ---
 def get_main_keyboard(user_id=None):
     tugmalar = [
         [
@@ -302,12 +343,15 @@ def get_main_keyboard(user_id=None):
             InlineKeyboardButton(text="👨‍💻 Bog'lanish", url=ADMIN_TELEGRAM_LINK)
         ]
     ]
+    
     if user_id == ADMIN_ID:
         tugmalar.append([
             InlineKeyboardButton(text="👑 Admin Panel (Statistika)", callback_data="admin_stat_btn")
         ])
+    
     return InlineKeyboardMarkup(inline_keyboard=tugmalar)
 
+# --- BOT HANDLERLARI ---
 @dp.message(CommandStart())
 async def start_cmd(message: types.Message):
     user = message.from_user
@@ -315,6 +359,7 @@ async def start_cmd(message: types.Message):
     username = f"@{user.username}" if user.username else "yo'q"
     
     is_new = save_user(user.id, ism, username)
+    
     if is_new:
         try:
             total, _, _ = get_stats()
@@ -338,6 +383,7 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
 
+# LEADERBOARD (Bot orqali ko'rish)
 @dp.callback_query(F.data == "leaderboard")
 @dp.message(Command("top"))
 @dp.message(Command("leaderboard"))
@@ -379,6 +425,7 @@ async def leaderboard_handler(event: types.Message | types.CallbackQuery):
     else:
         await event.answer(matn, reply_markup=klaviatura, parse_mode="HTML")
 
+# ADMIN PANEL VA BROADCAST
 @dp.callback_query(F.data.in_(["admin_stat_btn", "refresh_stat"]))
 @dp.message(Command("stat"))
 @dp.message(Command("admin"))
@@ -584,7 +631,7 @@ async def ai_chat_handler(message: types.Message):
 
 # --- FOYDALANUVCHILARNING SHAXSIY VAQTIGA QARAB KUNLIK ESLATMA YUBORISH ---
 async def personalized_reminder_scheduler():
-    sent_today = set()
+    sent_today = set() # (user_id, 'YYYY-MM-DD')
     while True:
         try:
             now_utc = datetime.now(timezone.utc)
@@ -599,6 +646,7 @@ async def personalized_reminder_scheduler():
                 if not enabled or not rem_time:
                     continue
                 
+                # Foydalanuvchining shaxsiy mahalliy vaqtini hisoblash
                 user_local_dt = now_utc + timedelta(minutes=(offset or 300))
                 user_local_hm = user_local_dt.strftime("%H:%M")
                 user_local_date = user_local_dt.strftime("%Y-%m-%d")
@@ -622,6 +670,7 @@ async def personalized_reminder_scheduler():
                         except Exception:
                             pass
 
+            # Har kuni eski yozuvlarni tozalab turish
             if len(sent_today) > 5000:
                 sent_today.clear()
 
@@ -640,7 +689,7 @@ CORS_HEADERS = {
 async def handle_options(request):
     return web.Response(headers=CORS_HEADERS)
 
-# Dars natijasini saqlash
+# Dars natijasini saqlash va kanalga yuborish
 async def handle_progress(request):
     try:
         data = await request.json()
@@ -683,10 +732,11 @@ async def handle_get_leaderboard(request):
         
         top_10 = []
         for r in top_10_raw:
+            u_name = r[2] if r[2] and str(r[2]).strip() not in ["0", "yo'q", "@yo'q", "@0"] else ""
             top_10.append({
                 "user_id": r[0],
                 "first_name": r[1] or "O'quvchi",
-                "username": r[2] or "",
+                "username": u_name,
                 "current_day": r[3] or 1,
                 "xp": r[4] or 0
             })
@@ -777,6 +827,7 @@ async def start_web_server():
 async def main():
     await start_web_server()
     print("Bot va AI server muvaffaqiyatli ishga tushdi...")
+    # Har bir foydalanuvchining shaxsiy vaqtiga qarab eslatma yuboruvchi jarayon
     asyncio.create_task(personalized_reminder_scheduler())
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, drop_pending_updates=True)

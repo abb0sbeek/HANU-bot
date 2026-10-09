@@ -13,7 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://profound-dango-74747d.netlify.app?v=2.2")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://calm-pasca-b4bbc0.netlify.app?v=2.3")
 ADMIN_ID = 1333770643
 LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
@@ -778,6 +778,39 @@ async def handle_get_reminder(request):
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers=CORS_HEADERS)
 
 # AI tekshiruvi
+# Yuqori sifatli Audio TTS (Telefonda va Telegramda 100% ovoz chiqishi uchun)
+async def handle_tts(request):
+    try:
+        text = request.query.get("text", "").strip()
+        if not text:
+            return web.Response(status=400, text="text required", headers=CORS_HEADERS)
+            
+        import urllib.parse
+        encoded = urllib.parse.quote(text)
+        url = f"https://translate.google.com/translate_tts?ie=UTF-8&tl=ko&client=tw-ob&q={encoded}"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://translate.google.com/"
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=8) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    return web.Response(
+                        body=data,
+                        content_type="audio/mpeg",
+                        headers={
+                            **CORS_HEADERS,
+                            "Cache-Control": "public, max-age=86400"
+                        }
+                    )
+                else:
+                    return web.Response(status=resp.status, text="TTS error", headers=CORS_HEADERS)
+    except Exception as e:
+        return web.Response(status=500, text=str(e), headers=CORS_HEADERS)
+
 async def handle_ai_check(request):
     try:
         data = await request.json()
@@ -813,6 +846,10 @@ async def start_web_server():
     app.router.add_post("/api/set-reminder", handle_set_reminder)
     app.router.add_options("/api/get-reminder", handle_options)
     app.router.add_get("/api/get-reminder", handle_get_reminder)
+    
+    # TTS Audio API
+    app.router.add_options("/api/tts", handle_options)
+    app.router.add_get("/api/tts", handle_tts)
     
     # AI check
     app.router.add_options("/api/ai-check-answer", handle_options)

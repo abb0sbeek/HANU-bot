@@ -15,7 +15,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://magnificent-khapse-15846f.netlify.app?v=2.3")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://symphonious-jelly-8170f2.netlify.app?v=2.3")
 ADMIN_ID = 1333770643
 REQUIRED_CHANNEL = "@abbosbekkorea"
 REQUIRED_CHANNEL_URL = "https://t.me/abbosbekkorea"
@@ -35,8 +35,10 @@ dp = Dispatcher()
 # ============================================================
 async def check_channel_subscription(user_id: int) -> bool:
     """Foydalanuvchi @abbosbekkorea kanaliga a'zo ekanligini tekshiradi"""
-    if user_id == ADMIN_ID or user_id <= 0:
+    if user_id == ADMIN_ID:
         return True
+    if not user_id or user_id <= 0:
+        return False
     try:
         member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
         if member.status in ["creator", "administrator", "member"]:
@@ -45,11 +47,27 @@ async def check_channel_subscription(user_id: int) -> bool:
             return getattr(member, "is_member", False)
         return False
     except Exception as e:
-        # Bot kanalda admin bo'lmaguncha yoki kanal topilmaganda bot qotib qolmasligi uchun
-        print(f"[OBUNA TEKSHIRISH OGOHLANTIRISH]: {e}")
-        # Agar "Chat not found" yoki "bot is not a member" bo'lsa, xatolik berishi mumkin
-        # Lekin foydalanuvchi botni admin qilsa, get_chat_member aniq status qaytaradi
-        return True
+        print(f"[OBUNA TEKSHIRISH XATOLIK - user {user_id}]: {e}")
+        # Agar xatolik yuz bersa (bot admin emas yoki a'zo topilmadi), ruxsat berilmaydi
+        return False
+
+async def update_user_menu_button(user_id: int, is_sub: bool):
+    """Foydalanuvchining chat menyusi (Web App) tugmasini dinamik boshqarish"""
+    if not user_id or user_id <= 0:
+        return
+    try:
+        if is_sub:
+            await bot.set_chat_menu_button(
+                chat_id=user_id,
+                menu_button=types.MenuButtonWebApp(text="🚀 Darsni boshlash", web_app=WebAppInfo(url=WEB_APP_URL))
+            )
+        else:
+            await bot.set_chat_menu_button(
+                chat_id=user_id,
+                menu_button=types.MenuButtonDefault()
+            )
+    except Exception as e:
+        print(f"[MENU TUGMASI XATOLIK - user {user_id}]: {e}")
 
 def get_subscription_keyboard():
     return InlineKeyboardMarkup(
@@ -77,6 +95,9 @@ class SubscriptionMiddleware(BaseMiddleware):
         # Har qanday xabar yoki tugma bosilganda kanal a'zoligi tekshiriladi
         is_sub = await check_channel_subscription(user.id)
         if not is_sub:
+            # Pastki WebApp tugmasini a'zo bo'lmagan foydalanuvchidan olib tashlaymiz
+            await update_user_menu_button(user.id, False)
+
             sub_msg = (
                 f"⚠️ <b>Assalomu alaykum, {user.first_name}!</b>\n\n"
                 f"Botimizdan to'liq foydalanish va koreys tili darslarini o'rganish uchun "
@@ -89,7 +110,7 @@ class SubscriptionMiddleware(BaseMiddleware):
             elif isinstance(event, types.CallbackQuery):
                 await event.answer("⚠️ Avval kanalimizga a'zo bo'ling!", show_alert=True)
                 try:
-                    await event.message.answer(sub_msg, reply_markup=get_subscription_keyboard(), parse_mode="HTML")
+                    await event.message.edit_text(sub_msg, reply_markup=get_subscription_keyboard(), parse_mode="HTML")
                 except Exception:
                     pass
             return
@@ -105,20 +126,25 @@ async def check_subscription_callback_handler(callback: types.CallbackQuery):
     user = callback.from_user
     is_sub = await check_channel_subscription(user.id)
     if is_sub:
-        await callback.answer("✅ Obunangiz tasdiqlandi! Rahmat!", show_alert=True)
+        await callback.answer("✅ Obunangiz tasdiqlandi! Rahmat!")
         save_or_update_user(user.id, user.first_name, user.username)
+        # Menyu tugmasini yoqamiz
+        await update_user_menu_button(user.id, True)
+
         xabar = (
             f"🎉 <b>Ajoyib, {user.first_name}! Kanalga a'zoligingiz tasdiqlandi!</b>\n\n"
-            f"🇰🇷 <b>HANU — Koreys tili 5 bosqichli tizimiga xush kelibsiz!</b>\n\n"
-            f"Darslarni boshlash uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing:"
+            f"🇰🇷 <b>HANU</b> koreys tili ta'lim platformasiga xush kelibsiz.\n\n"
+            f"Barcha darslar, so'zlar va AI repetitor siz uchun faollashtirildi!\n\n"
+            f"Darslarni boshlash uchun <b>«🚀 Darsni boshlash»</b> tugmasini bosing:"
         )
         try:
-            await callback.message.delete()
+            await callback.message.edit_text(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
         except Exception:
-            pass
-        await callback.message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
+            await callback.message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
     else:
-        await callback.answer("❌ Siz hali kanalga a'zo bo'lmadingiz! Iltimos, avval kanalga obuna bo'ling.", show_alert=True)
+        # A'zo bo'lmagan bo'lsa menyu tugmasini olib tashlaymiz
+        await update_user_menu_button(user.id, False)
+        await callback.answer(f"❌ Siz hali {REQUIRED_CHANNEL} kanaliga a'zo bo'lmadingiz! Iltimos, avval kanalga obuna bo'ling.", show_alert=True)
 # ============================================================
 
 
@@ -477,6 +503,21 @@ async def start_cmd(message: types.Message):
         except Exception as e:
             print("Kanalga yuborishda xato:", e)
 
+    is_sub = await check_channel_subscription(user.id)
+    if not is_sub:
+        await update_user_menu_button(user.id, False)
+        sub_msg = (
+            f"⚠️ <b>Assalomu alaykum, {ism}!</b>\n\n"
+            f"Botimizdan to'liq foydalanish va koreys tili darslarini o'rganish uchun "
+            f"rasmiy <b>{REQUIRED_CHANNEL}</b> kanalimizga obuna bo'lishingiz shart!\n\n"
+            f"<i>(Agar kanaldan chiqib ketsangiz, bot qayta a'zo bo'lishingizni so'raydi)</i>\n\n"
+            f"Pastdagi tugma orqali kanalga obuna bo'ling va <b>«✅ A'zo bo'ldim»</b> tugmasini bosing:"
+        )
+        await message.answer(sub_msg, reply_markup=get_subscription_keyboard(), parse_mode="HTML")
+        return
+
+    # A'zo bo'lsa menyu tugmasini faollashtiramiz
+    await update_user_menu_button(user.id, True)
     xabar = (
         f"Assalomu alaykum, <b>{ism}</b>!\n\n"
         "🇰🇷 <b>HANU</b> koreys tili ta'lim platformasiga xush kelibsiz.\n\n"
@@ -969,6 +1010,40 @@ async def handle_ai_check(request):
     except Exception as e:
         return web.json_response({"is_correct": False, "feedback": f"Xatolik: {str(e)}"}, status=500, headers=CORS_HEADERS)
 
+async def handle_check_sub(request):
+    try:
+        user_id_str = request.query.get("user_id", "0")
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            user_id = 0
+            
+        if user_id <= 0:
+            return web.json_response({
+                "status": "ok",
+                "is_subscribed": False,
+                "reason": "no_user_id",
+                "channel": REQUIRED_CHANNEL,
+                "channel_url": REQUIRED_CHANNEL_URL
+            }, headers=CORS_HEADERS)
+            
+        is_sub = await check_channel_subscription(user_id)
+        return web.json_response({
+            "status": "ok",
+            "user_id": user_id,
+            "is_subscribed": is_sub,
+            "channel": REQUIRED_CHANNEL,
+            "channel_url": REQUIRED_CHANNEL_URL
+        }, headers=CORS_HEADERS)
+    except Exception as e:
+        return web.json_response({
+            "status": "error",
+            "message": str(e),
+            "is_subscribed": False,
+            "channel": REQUIRED_CHANNEL,
+            "channel_url": REQUIRED_CHANNEL_URL
+        }, headers=CORS_HEADERS)
+
 async def start_web_server():
     app = web.Application()
     async def root_handler(request):
@@ -996,6 +1071,10 @@ async def start_web_server():
     # AI check
     app.router.add_options("/api/ai-check-answer", handle_options)
     app.router.add_post("/api/ai-check-answer", handle_ai_check)
+    
+    # Obuna tekshirish API (Web App uchun)
+    app.router.add_options("/api/check-sub", handle_options)
+    app.router.add_get("/api/check-sub", handle_check_sub)
     
     runner = web.AppRunner(app)
     await runner.setup()

@@ -13,7 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://magnificent-khapse-15846f.netlify.app?v=2.3")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://profound-dango-74747d.netlify.app/?v=2.3")
 ADMIN_ID = 1333770643
 LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
@@ -257,20 +257,26 @@ def update_progress_in_db(user_id, first_name, username, day, xp):
 def get_stats():
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users")
+    cursor.execute("SELECT COUNT(*) FROM users WHERE user_id > 0")
     total = cursor.fetchone()[0]
     
     today_str = datetime.now().strftime("%d.%m.%Y")
-    cursor.execute("SELECT COUNT(*) FROM users WHERE last_active LIKE ?", (f"{today_str}%",))
+    cursor.execute("SELECT COUNT(*) FROM users WHERE user_id > 0 AND last_active LIKE ?", (f"{today_str}%",))
     active_today = cursor.fetchone()[0]
+
+    try:
+        cursor.execute("SELECT COUNT(*) FROM reminders WHERE enabled = 1 AND user_id > 0")
+        active_reminders = cursor.fetchone()[0]
+    except Exception:
+        active_reminders = 0
     
     cursor.execute("""
         SELECT first_name, username, current_day, xp, last_active 
-        FROM users ORDER BY xp DESC, current_day DESC LIMIT 10
+        FROM users WHERE user_id > 0 ORDER BY xp DESC, current_day DESC LIMIT 10
     """)
     top_users = cursor.fetchall()
     conn.close()
-    return total, active_today, top_users
+    return total, active_today, active_reminders, top_users
 
 def get_leaderboard(current_user_id):
     conn = sqlite3.connect("users.db")
@@ -318,7 +324,7 @@ def get_user_reminder(user_id):
 def get_all_user_ids():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT user_id FROM users")
+    c.execute("SELECT user_id FROM users WHERE user_id > 0")
     users = [r[0] for r in c.fetchall()]
     conn.close()
     return users
@@ -436,28 +442,32 @@ async def admin_stat_handler(event: types.Message | types.CallbackQuery):
             await event.answer("Bu bo'lim faqat bot egasi uchun!", show_alert=True)
         return
     
-    total, active_today, top_users = get_stats()
+    total, active_today, active_reminders, top_users = get_stats()
     
-    matn = "👑 <b>ADMIN PANEL — STATISTIKA</b>\n\n"
-    matn += f"👥 <b>Jami o'quvchilar:</b> {total} ta\n"
-    matn += f"🔥 <b>Bugun dars qilganlar:</b> {active_today} ta\n\n"
-    matn += "🏆 <b>TOP O'QUVCHILAR (Faollik bo'yicha):</b>\n"
+    lines = [
+        "👑 <b>ADMIN PANEL — HANU BOT</b>\n",
+        f"👥 <b>Jami o'quvchilar:</b> {total} ta",
+        f"🔥 <b>Bugun faol bo'lganlar:</b> {active_today} ta",
+        f"⏰ <b>Eslatma yoqqanlar:</b> {active_reminders} ta\n",
+        "🏆 <b>TOP-10 O'QUVCHILAR:</b>"
+    ]
     
     if not top_users:
-        matn += "<i>Hozircha dars yakunlaganlar yo'q.</i>\n"
+        lines.append("<i>Hozircha dars yakunlaganlar yo'q.</i>")
     else:
         for i, u in enumerate(top_users, 1):
             ism, uname, day, xp, last_active = u
-            matn += (
-                f"{i}. <b>{ism}</b> ({uname})\n"
-                f"   └ 📍 <b>Kun {day}</b> • ⚡ <b>{xp} XP</b>\n"
-                f"   └ 🕒 <i>Oxirgi faollik: {last_active}</i>\n"
-            )
+            clean_uname = f"@{uname.replace('@', '')}" if uname and uname not in ["0", "yo'q", "@0"] else "username yo'q"
+            lines.append(f"{i}. <b>{ism}</b> ({clean_uname})")
+            lines.append(f"   └ 📍 <b>Kun {day}</b> • ⚡ <b>{xp} XP</b> • 🕒 <i>{last_active}</i>")
+    
+    matn = "\n".join(lines)
     
     admin_klaviatura = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Barchaga xabar (Broadcast)", callback_data="admin_broadcast_prompt")],
-            [InlineKeyboardButton(text="⏰ Eslatmani darhol yuborish", callback_data="admin_send_reminder_now")],
+            [InlineKeyboardButton(text="📢 Barchaga xabar yuborish (Broadcast)", callback_data="admin_broadcast_prompt")],
+            [InlineKeyboardButton(text="⏰ Eslatmani darhol barchaga yuborish", callback_data="admin_send_reminder_now")],
+            [InlineKeyboardButton(text="📥 O'quvchilar ro'yxati (CSV)", callback_data="admin_export_users_csv")],
             [InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_stat"), InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="back_to_menu")]
         ]
     )
@@ -468,13 +478,43 @@ async def admin_stat_handler(event: types.Message | types.CallbackQuery):
     else:
         await event.answer(matn, reply_markup=admin_klaviatura, parse_mode="HTML")
 
+@dp.callback_query(F.data == "admin_export_users_csv")
+async def export_users_csv_handler(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT user_id, first_name, username, current_day, xp, last_active FROM users WHERE user_id > 0 ORDER BY xp DESC")
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows:
+        await callback.answer("Hozircha foydalanuvchilar mavjud emas.", show_alert=True)
+        return
+
+    import io
+    import csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["User ID", "Ismi", "Username", "Joriy Kun", "XP", "Oxirgi faollik"])
+    for r in rows:
+        writer.writerow(r)
+    
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    doc = types.BufferedInputFile(csv_bytes, filename=f"hanu_users_{datetime.now().strftime('%Y%m%d')}.csv")
+    await callback.message.answer_document(doc, caption=f"📊 <b>Jami {len(rows)} ta o'quvchi ro'yxati (CSV)</b>", parse_mode="HTML")
+    await callback.answer()
+
 @dp.callback_query(F.data == "admin_broadcast_prompt")
 async def broadcast_prompt_handler(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
     await state.set_state(AdminStates.waiting_for_broadcast)
     await callback.message.answer(
-        "📝 <b>Barcha o'quvchilarga yubormoqchi bo'lgan xabaringizni yozing:</b>\n\n"
+        "📢 <b>Barcha o'quvchilarga yubormoqchi bo'lgan xabaringizni yuboring:</b>\n\n"
+        "• Bu oddiy matn, rasm (matn bilan), video yoki ovozli xabar bo'lishi mumkin.\n"
+        "• Har bir xabar ostiga avtomatik «🚀 Darsni davom ettirish» tugmasi qo'shiladi.\n\n"
         "<i>(Bekor qilish uchun /cancel deb yozing)</i>",
         parse_mode="HTML"
     )
@@ -490,27 +530,33 @@ async def process_broadcast_message(message: types.Message, state: FSMContext):
         return
 
     users = get_all_user_ids()
-    await message.answer(f"⏳ {len(users)} ta o'quvchiga xabar yuborilmoqda...")
+    if not users:
+        await state.clear()
+        await message.answer("❌ Baza bo'sh, foydalanuvchilar topilmadi.")
+        return
+
+    status_msg = await message.answer(f"⏳ <b>{len(users)} ta o'quvchiga xabar yuborilmoqda...</b>", parse_mode="HTML")
     
     success = 0
     fail = 0
     btn = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🚀 Darsni boshlash", web_app=WebAppInfo(url=WEB_APP_URL))]]
+        inline_keyboard=[[InlineKeyboardButton(text="🚀 Darsni davom ettirish", web_app=WebAppInfo(url=WEB_APP_URL))]]
     )
 
     for uid in users:
         try:
-            await bot.send_message(chat_id=uid, text=message.text, reply_markup=btn, parse_mode="HTML")
+            await message.copy_to(chat_id=uid, reply_markup=btn)
             success += 1
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.04)
         except Exception:
             fail += 1
 
     await state.clear()
-    await message.answer(
-        f"✅ <b>Xabar yuborish yakunlandi!</b>\n\n"
-        f"• Yetkazildi: {success} ta\n"
-        f"• Yetib bormadi (bloklagan): {fail} ta",
+    await status_msg.edit_text(
+        f"✅ <b>Ommaviy xabarnoma yakunlandi!</b>\n\n"
+        f"• Yetkazildi: <b>{success}</b> ta\n"
+        f"• Yetib bormadi (bloklagan): <b>{fail}</b> ta\n"
+        f"• Jami bazada: <b>{len(users)}</b> ta",
         parse_mode="HTML"
     )
 

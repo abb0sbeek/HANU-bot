@@ -5,7 +5,9 @@ import sqlite3
 import aiohttp
 from datetime import datetime, timezone, timedelta
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
+from aiogram.types import TelegramObject
+from typing import Callable, Dict, Any, Awaitable
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.fsm.context import FSMContext
@@ -15,6 +17,8 @@ from aiogram.fsm.state import State, StatesGroup
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
 WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://magnificent-khapse-15846f.netlify.app?v=2.3")
 ADMIN_ID = 1333770643
+REQUIRED_CHANNEL = "@abbosbekkorea"
+REQUIRED_CHANNEL_URL = "https://t.me/abbosbekkorea"
 LOG_CHANNEL_ID = -1003919167998
 ADMIN_TELEGRAM_LINK = "https://t.me/abb0sbeek"
 
@@ -25,6 +29,98 @@ GEMINI_API_KEY = RAW_KEY.strip().strip('"').strip("'")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# ============================================================
+# MAJBURIY OBUNA (FORCED SUBSCRIPTION) TIZIMI
+# ============================================================
+async def check_channel_subscription(user_id: int) -> bool:
+    """Foydalanuvchi @abbosbekkorea kanaliga a'zo ekanligini tekshiradi"""
+    if user_id == ADMIN_ID or user_id <= 0:
+        return True
+    try:
+        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+        if member.status in ["creator", "administrator", "member"]:
+            return True
+        elif member.status == "restricted":
+            return getattr(member, "is_member", False)
+        return False
+    except Exception as e:
+        # Bot kanalda admin bo'lmaguncha yoki kanal topilmaganda bot qotib qolmasligi uchun
+        print(f"[OBUNA TEKSHIRISH OGOHLANTIRISH]: {e}")
+        # Agar "Chat not found" yoki "bot is not a member" bo'lsa, xatolik berishi mumkin
+        # Lekin foydalanuvchi botni admin qilsa, get_chat_member aniq status qaytaradi
+        return True
+
+def get_subscription_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Kanalga a'zo bo'lish", url=REQUIRED_CHANNEL_URL)],
+            [InlineKeyboardButton(text="✅ A'zo bo'ldim (Tekshirish)", callback_data="check_subscription")]
+        ]
+    )
+
+class SubscriptionMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        user = data.get("event_from_user")
+        if not user or user.id == ADMIN_ID:
+            return await handler(event, data)
+
+        # Obunani tekshirish tugmasi bosilganda to'xtatmasdan o'tkazib yuboramiz
+        if isinstance(event, types.CallbackQuery) and event.data == "check_subscription":
+            return await handler(event, data)
+
+        # Har qanday xabar yoki tugma bosilganda kanal a'zoligi tekshiriladi
+        is_sub = await check_channel_subscription(user.id)
+        if not is_sub:
+            sub_msg = (
+                f"⚠️ <b>Assalomu alaykum, {user.first_name}!</b>\n\n"
+                f"Botimizdan to'liq foydalanish va koreys tili darslarini o'rganish uchun "
+                f"rasmiy <b>{REQUIRED_CHANNEL}</b> kanalimizga obuna bo'lishingiz shart!\n\n"
+                f"<i>(Agar kanaldan chiqib ketsangiz, bot qayta a'zo bo'lishingizni so'raydi)</i>\n\n"
+                f"Pastdagi tugma orqali kanalga obuna bo'ling va <b>«✅ A'zo bo'ldim»</b> tugmasini bosing:"
+            )
+            if isinstance(event, types.Message):
+                await event.answer(sub_msg, reply_markup=get_subscription_keyboard(), parse_mode="HTML")
+            elif isinstance(event, types.CallbackQuery):
+                await event.answer("⚠️ Avval kanalimizga a'zo bo'ling!", show_alert=True)
+                try:
+                    await event.message.answer(sub_msg, reply_markup=get_subscription_keyboard(), parse_mode="HTML")
+                except Exception:
+                    pass
+            return
+
+        return await handler(event, data)
+
+# Middleware larni ro'yxatdan o'tkazish
+dp.message.middleware(SubscriptionMiddleware())
+dp.callback_query.middleware(SubscriptionMiddleware())
+
+@dp.callback_query(F.data == "check_subscription")
+async def check_subscription_callback_handler(callback: types.CallbackQuery):
+    user = callback.from_user
+    is_sub = await check_channel_subscription(user.id)
+    if is_sub:
+        await callback.answer("✅ Obunangiz tasdiqlandi! Rahmat!", show_alert=True)
+        save_or_update_user(user.id, user.first_name, user.username)
+        xabar = (
+            f"🎉 <b>Ajoyib, {user.first_name}! Kanalga a'zoligingiz tasdiqlandi!</b>\n\n"
+            f"🇰🇷 <b>HANU — Koreys tili 5 bosqichli tizimiga xush kelibsiz!</b>\n\n"
+            f"Darslarni boshlash uchun pastdagi <b>«🚀 Darsni boshlash»</b> tugmasini bosing:"
+        )
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
+    else:
+        await callback.answer("❌ Siz hali kanalga a'zo bo'lmadingiz! Iltimos, avval kanalga obuna bo'ling.", show_alert=True)
+# ============================================================
+
 
 class AdminStates(StatesGroup):
     waiting_for_broadcast = State()

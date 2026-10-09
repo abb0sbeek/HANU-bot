@@ -399,7 +399,6 @@ def init_db():
     conn.close()
 
 
-save_or_update_user = save_user
 def save_user(user_id, first_name, username):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
@@ -414,6 +413,8 @@ def save_user(user_id, first_name, username):
     conn.commit()
     conn.close()
     return is_new
+
+save_or_update_user = save_user
 
 def update_progress_in_db(user_id, first_name, username, day, xp):
     conn = sqlite3.connect("users.db")

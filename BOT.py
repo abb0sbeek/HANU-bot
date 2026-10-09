@@ -88,14 +88,15 @@ class SubscriptionMiddleware(BaseMiddleware):
         if not user or user.id == ADMIN_ID:
             return await handler(event, data)
 
-        # Obunani tekshirish tugmasi bosilganda to'xtatmasdan o'tkazib yuboramiz
+        # /start komandasi, /id va obunani tekshirish callbacki to'xtatilmaydi
+        if isinstance(event, types.Message) and event.text and (event.text.startswith("/start") or event.text.startswith("/id") or event.text.startswith("/myid")):
+            return await handler(event, data)
         if isinstance(event, types.CallbackQuery) and event.data == "check_subscription":
             return await handler(event, data)
 
-        # Har qanday xabar yoki tugma bosilganda kanal a'zoligi tekshiriladi
+        # Har qanday boshqa xabar yoki tugma bosilganda kanal a'zoligi tekshiriladi
         is_sub = await check_channel_subscription(user.id)
         if not is_sub:
-            # Pastki WebApp tugmasini a'zo bo'lmagan foydalanuvchidan olib tashlaymiz
             await update_user_menu_button(user.id, False)
 
             sub_msg = (
@@ -121,10 +122,46 @@ class SubscriptionMiddleware(BaseMiddleware):
 dp.message.middleware(SubscriptionMiddleware())
 dp.callback_query.middleware(SubscriptionMiddleware())
 
+@dp.message(Command("id"))
+@dp.message(Command("myid"))
+async def my_id_handler(message: types.Message):
+    user = message.from_user
+    is_sub = await check_channel_subscription(user.id)
+    sub_text = "✅ A'zo bo'lingan" if is_sub else "❌ A'zo bo'linmagan"
+    await message.answer(
+        f"👤 <b>Foydalanuvchi ma'lumotlari:</b>\n\n"
+        f"• <b>Ism:</b> {user.first_name}\n"
+        f"• <b>Telegram ID:</b> <code>{user.id}</code>\n"
+        f"• <b>Username:</b> @{user.username or yoq}\n"
+        f"• <b>Kanal a'zoligi:</b> {sub_text}",
+        parse_mode="HTML"
+    )
+
 @dp.callback_query(F.data == "check_subscription")
 async def check_subscription_callback_handler(callback: types.CallbackQuery):
     user = callback.from_user
-    is_sub = await check_channel_subscription(user.id)
+    
+    # Kanal a'zoligini tekshiramiz
+    is_sub = False
+    admin_error = False
+    
+    if user.id == ADMIN_ID:
+        is_sub = True
+    else:
+        try:
+            member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
+            if member.status in ["creator", "administrator", "member"]:
+                is_sub = True
+            elif member.status == "restricted":
+                is_sub = getattr(member, "is_member", False)
+            else:
+                is_sub = False
+        except Exception as e:
+            err_str = str(e)
+            print(f"[OBUNA TEKSHIRISH XATOLIK - user {user.id}]: {err_str}")
+            admin_error = True
+            is_sub = False
+
     if is_sub:
         await callback.answer("✅ Obunangiz tasdiqlandi! Rahmat!")
         save_user(user.id, user.first_name, user.username)
@@ -137,26 +174,36 @@ async def check_subscription_callback_handler(callback: types.CallbackQuery):
             f"Barcha darslar, so'zlar va AI repetitor siz uchun faollashtirildi!\n\n"
             f"Darslarni boshlash uchun <b>«🚀 Darsni boshlash»</b> tugmasini bosing:"
         )
+
+        # 1. Asosiy menyuni to'g'ridan-to'g'ri user chatiga 100% yuboramiz
+        await bot.send_message(
+            chat_id=user.id,
+            text=xabar,
+            reply_markup=get_main_keyboard(user.id),
+            parse_mode="HTML"
+        )
         
-        # Eskirgan obuna xabarini butunlay yo'q qilib, asosiy menyuni chiqaramiz
-        deleted = False
+        # 2. Eskirgan obuna xabarini yo'q qilamiz (o'chiramiz)
         try:
             await callback.message.delete()
-            deleted = True
         except Exception:
-            deleted = False
-
-        if deleted:
-            await callback.message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
-        else:
-            try:
-                await callback.message.edit_text(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
-            except Exception:
-                await callback.message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
+            pass
     else:
         # A'zo bo'lmagan bo'lsa menyu tugmasini olib tashlaymiz
         await update_user_menu_button(user.id, False)
-        await callback.answer(f"❌ Siz hali {REQUIRED_CHANNEL} kanaliga a'zo bo'lmadingiz! Iltimos, avval kanalga obuna bo'ling.", show_alert=True)
+        
+        if admin_error:
+            await callback.answer(
+                "⚠️ DIQQAT: Bot @abbosbekkorea kanaliga Administrator qilinmagan!\n\n"
+                "Telegram bot kanal a'zolarini ko'ra olishi uchun kanalingizga @kor_uzbot ni Administrator qilib qo'shishingiz shart!",
+                show_alert=True
+            )
+        else:
+            await callback.answer(
+                f"❌ Siz hali {REQUIRED_CHANNEL} kanaliga a'zo bo'lmadingiz!\n\n"
+                f"Iltimos, avval kanalga obuna bo'ling va so'ng qayta tekshiring.",
+                show_alert=True
+            )
 # ============================================================
 
 

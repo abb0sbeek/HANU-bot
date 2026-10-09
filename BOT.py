@@ -15,7 +15,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://symphonious-jelly-8170f2.netlify.app?v=2.3")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://melodic-crumble-73f197.netlify.app?v=2.3")
 ADMIN_ID = 1333770643
 REQUIRED_CHANNEL = "@abbosbekkorea"
 REQUIRED_CHANNEL_URL = "https://t.me/abbosbekkorea"
@@ -62,9 +62,10 @@ async def update_user_menu_button(user_id: int, is_sub: bool):
                 menu_button=types.MenuButtonWebApp(text="🚀 Darsni boshlash", web_app=WebAppInfo(url=WEB_APP_URL))
             )
         else:
+            # Obuna bo'lmagan foydalanuvchidan WebApp tugmasini butunlay olib tashlab, oddiy komandalar menyusiga o'tkazamiz
             await bot.set_chat_menu_button(
                 chat_id=user_id,
-                menu_button=types.MenuButtonDefault()
+                menu_button=types.MenuButtonCommands()
             )
     except Exception as e:
         print(f"[MENU TUGMASI XATOLIK - user {user_id}]: {e}")

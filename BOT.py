@@ -127,7 +127,7 @@ async def check_subscription_callback_handler(callback: types.CallbackQuery):
     is_sub = await check_channel_subscription(user.id)
     if is_sub:
         await callback.answer("✅ Obunangiz tasdiqlandi! Rahmat!")
-        save_or_update_user(user.id, user.first_name, user.username)
+        save_user(user.id, user.first_name, user.username)
         # Menyu tugmasini yoqamiz
         await update_user_menu_button(user.id, True)
 
@@ -137,10 +137,22 @@ async def check_subscription_callback_handler(callback: types.CallbackQuery):
             f"Barcha darslar, so'zlar va AI repetitor siz uchun faollashtirildi!\n\n"
             f"Darslarni boshlash uchun <b>«🚀 Darsni boshlash»</b> tugmasini bosing:"
         )
+        
+        # Eskirgan obuna xabarini butunlay yo'q qilib, asosiy menyuni chiqaramiz
+        deleted = False
         try:
-            await callback.message.edit_text(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
+            await callback.message.delete()
+            deleted = True
         except Exception:
+            deleted = False
+
+        if deleted:
             await callback.message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
+        else:
+            try:
+                await callback.message.edit_text(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
+            except Exception:
+                await callback.message.answer(xabar, reply_markup=get_main_keyboard(user.id), parse_mode="HTML")
     else:
         # A'zo bo'lmagan bo'lsa menyu tugmasini olib tashlaymiz
         await update_user_menu_button(user.id, False)
@@ -339,6 +351,8 @@ def init_db():
     conn.commit()
     conn.close()
 
+
+save_or_update_user = save_user
 def save_user(user_id, first_name, username):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()

@@ -15,7 +15,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://melodic-crumble-73f197.netlify.app?v=2.3")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://subtle-bonbon-85ac6a.netlify.app?v=2.3")
 ADMIN_ID = 1333770643
 REQUIRED_CHANNEL = "@abbosbekkorea"
 REQUIRED_CHANNEL_URL = "https://t.me/abbosbekkorea"
@@ -33,22 +33,36 @@ dp = Dispatcher()
 # ============================================================
 # MAJBURIY OBUNA (FORCED SUBSCRIPTION) TIZIMI
 # ============================================================
+_SUBSCRIPTION_CACHE = {}  # {user_id: (is_sub, timestamp)}
+_SUB_CACHE_TTL = 300  # 5 daqiqa kesh (har bir tugma bosilganda qayta Telegram serveriga so'rov yubormaydi)
+
 async def check_channel_subscription(user_id: int) -> bool:
-    """Foydalanuvchi @abbosbekkorea kanaliga a'zo ekanligini tekshiradi"""
+    """Foydalanuvchi @abbosbekkorea kanaliga a'zo ekanligini tekshiradi (5 daqiqalik tezkor xotira keshi bilan)"""
     if user_id == ADMIN_ID:
         return True
     if not user_id or user_id <= 0:
         return False
+
+    # 1. Keshdan tekshiramiz (0 millisekund)
+    now = datetime.now().timestamp()
+    if user_id in _SUBSCRIPTION_CACHE:
+        cached_sub, cached_time = _SUBSCRIPTION_CACHE[user_id]
+        if now - cached_time < _SUB_CACHE_TTL:
+            return cached_sub
+
+    # 2. Keshda bo'lmasa Telegram API orqali tekshiramiz
     try:
         member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+        is_sub = False
         if member.status in ["creator", "administrator", "member"]:
-            return True
+            is_sub = True
         elif member.status == "restricted":
-            return getattr(member, "is_member", False)
-        return False
+            is_sub = getattr(member, "is_member", False)
+        
+        _SUBSCRIPTION_CACHE[user_id] = (is_sub, now)
+        return is_sub
     except Exception as e:
         print(f"[OBUNA TEKSHIRISH XATOLIK - user {user_id}]: {e}")
-        # Agar xatolik yuz bersa (bot admin emas yoki a'zo topilmadi), ruxsat berilmaydi
         return False
 
 async def update_user_menu_button(user_id: int, is_sub: bool):
@@ -396,6 +410,9 @@ def init_db():
     conn.commit()
     # Sinov / brauzer orqali tushib qolgan user_id = 0 yozuvlarni tozalash:
     cursor.execute("DELETE FROM users WHERE user_id <= 0")
+    # Reytingni bir zumda yuklash uchun indekslar:
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_xp ON users(xp DESC, current_day DESC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_id ON users(user_id);")
     conn.commit()
     conn.close()
 
@@ -463,27 +480,54 @@ def get_stats():
     conn.close()
     return total, active_today, active_reminders, top_users
 
+_LEADERBOARD_CACHE = {"data": None, "time": 0}
+
 def get_leaderboard(current_user_id):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("""
-        SELECT user_id, first_name, username, current_day, xp 
-        FROM users WHERE user_id > 0 ORDER BY xp DESC, current_day DESC LIMIT 10
-    """)
-    top_10 = c.fetchall()
+    """Reyting ma'lumotlarini bir zumda (0.01s) yuklovchi keshli va indeksli funksiya"""
+    now = datetime.now().timestamp()
+    cached = _LEADERBOARD_CACHE.get("data")
     
-    c.execute("SELECT COUNT(*) FROM users")
-    total_users = c.fetchone()[0]
+    # TOP-10 va jami o'quvchilar sonini 30 soniya davomida keshda saqlaymiz
+    if not cached or (now - _LEADERBOARD_CACHE.get("time", 0) > 30):
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("""
+            SELECT user_id, first_name, username, current_day, xp 
+            FROM users WHERE user_id > 0 ORDER BY xp DESC, current_day DESC LIMIT 10
+        """)
+        top_10 = c.fetchall()
+        c.execute("SELECT COUNT(*) FROM users WHERE user_id > 0")
+        total_res = c.fetchone()
+        total_users = total_res[0] if total_res else 1
+        conn.close()
+        _LEADERBOARD_CACHE["data"] = (top_10, total_users)
+        _LEADERBOARD_CACHE["time"] = now
+    else:
+        top_10, total_users = cached
+
+    # Foydalanuvchining o'z o'rnini aniqlash:
+    my_rank = 1
+    my_data = None
     
-    c.execute("""
-        SELECT COUNT(*) + 1 FROM users WHERE xp > (SELECT COALESCE(xp, 0) FROM users WHERE user_id = ?)
-    """, (current_user_id,))
-    my_rank_res = c.fetchone()
-    my_rank = my_rank_res[0] if my_rank_res else 1
-    
-    c.execute("SELECT current_day, xp FROM users WHERE user_id = ?", (current_user_id,))
-    my_data = c.fetchone()
-    conn.close()
+    # 1. Avval TOP-10 ichidan qidiramiz (0 millisekund):
+    for idx, u in enumerate(top_10):
+        if u[0] == current_user_id:
+            my_rank = idx + 1
+            my_data = (u[3], u[4])
+            break
+
+    # 2. Agar TOP-10 da bo'lmasa, bazadan indeks orqali chaqmoqdek tez olamiz:
+    if my_data is None:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("SELECT current_day, xp FROM users WHERE user_id = ?", (current_user_id,))
+        my_data = c.fetchone()
+        my_xp = my_data[1] if my_data else 0
+        c.execute("SELECT COUNT(*) + 1 FROM users WHERE xp > ? AND user_id > 0", (my_xp,))
+        rank_res = c.fetchone()
+        my_rank = rank_res[0] if rank_res else 1
+        conn.close()
+
     return top_10, my_rank, my_data, total_users
 
 def set_user_reminder(user_id, reminder_time, offset=300, enabled=1):
@@ -594,6 +638,10 @@ async def start_cmd(message: types.Message):
 @dp.message(Command("top"))
 @dp.message(Command("leaderboard"))
 async def leaderboard_handler(event: types.Message | types.CallbackQuery):
+    # Tugma bosilishi bilanoq Telegramga darhol javob beramiz (tugma aylanib qotib qolmasligi uchun):
+    if isinstance(event, types.CallbackQuery):
+        await event.answer()
+
     user_id = event.from_user.id
     top_10, my_rank, my_data, total_users = get_leaderboard(user_id)
     my_day = my_data[0] if my_data else 1
@@ -626,8 +674,10 @@ async def leaderboard_handler(event: types.Message | types.CallbackQuery):
     )
 
     if isinstance(event, types.CallbackQuery):
-        await event.message.edit_text(matn, reply_markup=klaviatura, parse_mode="HTML")
-        await event.answer()
+        try:
+            await event.message.edit_text(matn, reply_markup=klaviatura, parse_mode="HTML")
+        except Exception:
+            pass
     else:
         await event.answer(matn, reply_markup=klaviatura, parse_mode="HTML")
 

@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 # ==================== SOZLAMALAR ====================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8642381123:AAGT8HWcURijPXZaYfxYjH5IqBIdct7p6tE")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://subtle-bonbon-85ac6a.netlify.app?v=2.3")
 ADMIN_ID = 1333770643
 REQUIRED_CHANNEL = "@abbosbekkorea"
